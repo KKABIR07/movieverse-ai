@@ -1,65 +1,170 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+import { useQuery } from '@tanstack/react-query';
+import { tmdb, TMDB_KEY_MISSING } from '@/lib/tmdb';
+import { HeroBanner } from '@/components/movie/HeroBanner';
+import { HorizontalScroll } from '@/components/movie/HorizontalScroll';
+import { TrendingShowcase } from '@/components/movie/TrendingShowcase';
+import { GenreSection } from '@/components/movie/GenreSection';
+import { PeopleShowcase } from '@/components/people/PeopleShowcase';
+import { FollowingShelf } from '@/components/people/FollowingShelf';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { KeyRound } from 'lucide-react';
+
+export default function HomePage() {
+  const { data: trending, isLoading: loadingTrending } = useQuery({
+    queryKey: ['trending', 'movie', 'week'],
+    queryFn: () => tmdb.movie.trending('week'),
+    enabled: !TMDB_KEY_MISSING,
+    retry: false,
+  });
+
+  const { data: popular } = useQuery({
+    queryKey: ['movies', 'popular'],
+    queryFn: () => tmdb.movie.popular(),
+    enabled: !TMDB_KEY_MISSING,
+    retry: false,
+  });
+
+  const { data: topRated } = useQuery({
+    queryKey: ['movies', 'top_rated'],
+    queryFn: () => tmdb.movie.topRated(),
+    enabled: !TMDB_KEY_MISSING,
+    retry: false,
+  });
+
+  const { data: nowPlaying } = useQuery({
+    queryKey: ['movies', 'now_playing'],
+    queryFn: () => tmdb.movie.nowPlaying(),
+    enabled: !TMDB_KEY_MISSING,
+    retry: false,
+  });
+
+  const { data: trendingTV } = useQuery({
+    queryKey: ['trending', 'tv', 'week'],
+    queryFn: () => tmdb.tv.trending('week'),
+    enabled: !TMDB_KEY_MISSING,
+    retry: false,
+  });
+
+  const { data: upcoming } = useQuery({
+    queryKey: ['movies', 'upcoming'],
+    queryFn: () => tmdb.movie.upcoming(),
+    enabled: !TMDB_KEY_MISSING,
+    retry: false,
+  });
+
+  const { data: trendingPeople1 } = useQuery({
+    queryKey: ['trending', 'people', 'week', 1],
+    queryFn: () => tmdb.person.trending('week', 1),
+    enabled: !TMDB_KEY_MISSING,
+    retry: false,
+  });
+
+  const { data: trendingPeople2 } = useQuery({
+    queryKey: ['trending', 'people', 'week', 2],
+    queryFn: () => tmdb.person.trending('week', 2),
+    enabled: !TMDB_KEY_MISSING && !!(trendingPeople1),
+    retry: false,
+  });
+
+  const { data: trendingPeople3 } = useQuery({
+    queryKey: ['trending', 'people', 'week', 3],
+    queryFn: () => tmdb.person.trending('week', 3),
+    enabled: !TMDB_KEY_MISSING && !!(trendingPeople2),
+    retry: false,
+  });
+
+  const trendingPeople50 = [
+    ...(trendingPeople1?.results ?? []),
+    ...(trendingPeople2?.results ?? []),
+    ...(trendingPeople3?.results ?? []),
+  ].slice(0, 50);
+
+  const heroMovies = trending?.results?.slice(0, 8) ?? [];
+
+  if (TMDB_KEY_MISSING) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="max-w-md text-center space-y-5">
+          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto">
+            <KeyRound size={32} className="text-amber-400" />
+          </div>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Add your TMDB API key</h1>
+          <p className="text-[var(--text-secondary)] leading-relaxed">
+            MovieVerse needs a free TMDB API key to fetch movie data. It takes about 2 minutes to set up.
           </p>
+          <div className="glass rounded-xl p-4 text-left space-y-3">
+            <p className="text-sm font-medium text-[var(--text-primary)]">Quick setup:</p>
+            <ol className="space-y-2 text-sm text-[var(--text-secondary)]">
+              <li>1. Go to <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer" className="text-[var(--accent-primary)] hover:underline">themoviedb.org/settings/api</a> and create a free account</li>
+              <li>2. Request an API key (choose "Developer")</li>
+              <li>
+                3. Open <code className="bg-[var(--bg-hover)] px-1.5 py-0.5 rounded text-xs">movieverse/.env.local</code> and set:
+                <pre className="mt-1.5 bg-[var(--bg-secondary)] rounded-lg p-3 text-xs text-amber-300 overflow-auto">
+{`NEXT_PUBLIC_TMDB_API_KEY=your_actual_key`}
+                </pre>
+              </li>
+              <li>4. Save the file and restart the dev server</li>
+            </ol>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen">
+      {loadingTrending ? (
+        <div className="h-[100svh] min-h-[600px]">
+          <Skeleton className="h-full w-full" rounded="rounded-none" />
         </div>
-      </main>
+      ) : heroMovies.length > 0 ? (
+        <HeroBanner movies={heroMovies} />
+      ) : null}
+
+      <div className="-mt-20 relative z-10">
+        <TrendingShowcase
+          items={trending?.results ?? []}
+          loading={loadingTrending}
+        />
+
+        {/* Trending Stars spotlight — up to 50 */}
+        {trendingPeople50.length > 0 && (
+          <PeopleShowcase people={trendingPeople50} />
+        )}
+
+        {/* Followed people shelf (only shown when logged in + has follows) */}
+        <FollowingShelf />
+
+        <HorizontalScroll
+          title="🎬 Now Playing"
+          items={nowPlaying?.results ?? []}
+          viewAllHref="/movies"
+        />
+        <GenreSection />
+        <HorizontalScroll
+          title="⭐ Top Rated Movies"
+          items={topRated?.results ?? []}
+          viewAllHref="/top-rated"
+        />
+        <HorizontalScroll
+          title="📺 Trending TV Shows"
+          items={trendingTV?.results ?? []}
+          mediaType="tv"
+          viewAllHref="/tv"
+        />
+        <HorizontalScroll
+          title="🎟️ Upcoming Releases"
+          items={upcoming?.results ?? []}
+          viewAllHref="/movies"
+        />
+        <HorizontalScroll
+          title="🌟 Popular Right Now"
+          items={popular?.results ?? []}
+          viewAllHref="/movies"
+        />
+      </div>
     </div>
   );
 }
