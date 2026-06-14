@@ -27,7 +27,7 @@ const FEATURES = [
   {
     icon: Brain,
     title: 'AI-Powered Recommendations',
-    desc: 'Describe what you're in the mood for in plain language and our AI assistant surfaces films that genuinely match — not just genre keywords.',
+    desc: "Describe what you're in the mood for in plain language and our AI assistant surfaces films that genuinely match — not just genre keywords.",
   },
   {
     icon: Bookmark,
