@@ -44,6 +44,8 @@ interface FilterStore {
   activeContentType: 'movie' | 'tv' | 'both';
   minRating: string;
   sortBy: string;
+  yearFrom: string;
+  yearTo: string;
 
   setSidebarOpen: (v: boolean) => void;
   toggleSidebar: () => void;
@@ -53,6 +55,8 @@ interface FilterStore {
   setContentType: (t: 'movie' | 'tv' | 'both') => void;
   setMinRating: (v: string) => void;
   setSortBy: (v: string) => void;
+  setYearFrom: (v: string) => void;
+  setYearTo: (v: string) => void;
   clearAll: () => void;
 
   getDiscoverParams: () => Record<string, string>;
@@ -65,6 +69,8 @@ export const useFilterStore = create<FilterStore>()((set, get) => ({
   activeContentType: 'both',
   minRating: '',
   sortBy: 'popularity.desc',
+  yearFrom: '',
+  yearTo: '',
 
   setSidebarOpen: (v) => set({ sidebarOpen: v }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -79,11 +85,13 @@ export const useFilterStore = create<FilterStore>()((set, get) => ({
   setContentType: (t) => set({ activeContentType: t }),
   setMinRating: (v) => set({ minRating: v }),
   setSortBy: (v) => set({ sortBy: v }),
+  setYearFrom: (v) => set({ yearFrom: v }),
+  setYearTo: (v) => set({ yearTo: v }),
   clearAll: () =>
-    set({ activeRegion: 'all', activeGenres: [], activeContentType: 'both', minRating: '', sortBy: 'popularity.desc' }),
+    set({ activeRegion: 'all', activeGenres: [], activeContentType: 'both', minRating: '', sortBy: 'popularity.desc', yearFrom: '', yearTo: '' }),
 
   getDiscoverParams: () => {
-    const { activeRegion, activeGenres, minRating, sortBy } = get();
+    const { activeRegion, activeGenres, minRating, sortBy, yearFrom, yearTo, activeContentType } = get();
     const region = REGIONS.find((r) => r.key === activeRegion);
     const params: Record<string, string> = { sort_by: sortBy };
     if (region?.language) params['with_original_language'] = region.language;
@@ -95,6 +103,10 @@ export const useFilterStore = create<FilterStore>()((set, get) => ({
       params['with_genres'] = activeGenres.join(',');
     }
     if (minRating) params['vote_average.gte'] = minRating;
+    // Year range — use the right TMDB date field per content type
+    const datePrefix = activeContentType === 'tv' ? 'first_air_date' : 'primary_release_date';
+    if (yearFrom) params[`${datePrefix}.gte`] = `${yearFrom}-01-01`;
+    if (yearTo)   params[`${datePrefix}.lte`] = `${yearTo}-12-31`;
     return params;
   },
 }));

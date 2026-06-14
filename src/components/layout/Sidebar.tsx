@@ -21,6 +21,8 @@ export function Sidebar() {
     activeContentType, setContentType,
     minRating, setMinRating,
     sortBy, setSortBy,
+    yearFrom, setYearFrom,
+    yearTo, setYearTo,
     clearAll, getDiscoverParams,
   } = useFilterStore();
 
@@ -31,7 +33,27 @@ export function Sidebar() {
     if (window.innerWidth < 768) setSidebarOpen(false);
   };
 
-  const hasActiveFilters = activeRegion !== 'all' || activeGenres.length > 0 || minRating !== '' || activeContentType !== 'both';
+  const hasActiveFilters = activeRegion !== 'all' || activeGenres.length > 0 || minRating !== '' || activeContentType !== 'both' || yearFrom !== '' || yearTo !== '';
+
+  const CURRENT_YEAR = new Date().getFullYear();
+  const DECADES = [
+    { label: '2020s', from: '2020', to: String(CURRENT_YEAR) },
+    { label: '2010s', from: '2010', to: '2019' },
+    { label: '2000s', from: '2000', to: '2009' },
+    { label: '1990s', from: '1990', to: '1999' },
+    { label: '1980s', from: '1980', to: '1989' },
+    { label: 'Classic', from: '1920', to: '1979' },
+  ];
+
+  const setDecade = (from: string, to: string) => {
+    if (yearFrom === from && yearTo === to) {
+      setYearFrom(''); setYearTo('');
+    } else {
+      setYearFrom(from); setYearTo(to);
+    }
+  };
+
+  const isDecadeActive = (from: string, to: string) => yearFrom === from && yearTo === to;
 
   return (
     <>
@@ -180,6 +202,64 @@ export function Sidebar() {
                     </button>
                   ))}
                 </div>
+              </section>
+
+              {/* Year filter */}
+              <section>
+                <div className="flex items-center justify-between px-1 mb-2.5">
+                  <h3 className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)]">Year / Era</h3>
+                  {(yearFrom || yearTo) && (
+                    <button
+                      onClick={() => { setYearFrom(''); setYearTo(''); }}
+                      className="text-xs text-[var(--accent-primary)] hover:underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                {/* Decade quick-picks */}
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {DECADES.map((d) => (
+                    <button
+                      key={d.label}
+                      onClick={() => setDecade(d.from, d.to)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+                        isDecadeActive(d.from, d.to)
+                          ? 'bg-[var(--accent-primary)] text-white'
+                          : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] border border-[var(--border)]'
+                      }`}
+                    >
+                      {d.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom range */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1900}
+                    max={CURRENT_YEAR}
+                    placeholder="From"
+                    value={yearFrom}
+                    onChange={(e) => setYearFrom(e.target.value)}
+                    className="w-full bg-[var(--bg-card)] border border-[var(--border)] focus:border-[var(--accent-primary)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors"
+                  />
+                  <span className="text-xs text-[var(--text-muted)] flex-shrink-0">–</span>
+                  <input
+                    type="number"
+                    min={1900}
+                    max={CURRENT_YEAR}
+                    placeholder="To"
+                    value={yearTo}
+                    onChange={(e) => setYearTo(e.target.value)}
+                    className="w-full bg-[var(--bg-card)] border border-[var(--border)] focus:border-[var(--accent-primary)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none transition-colors"
+                  />
+                </div>
+                {yearFrom && yearTo && parseInt(yearFrom) > parseInt(yearTo) && (
+                  <p className="text-[10px] text-red-400 mt-1 px-1">"From" year must be ≤ "To" year</p>
+                )}
               </section>
 
               {/* Sort */}
