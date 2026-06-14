@@ -33,15 +33,18 @@ export function Footer() {
             <ul className="space-y-2 text-sm text-[var(--text-muted)]">
               <li><Link href="/watchlist" className="hover:text-[var(--text-primary)] transition-colors">Watchlist</Link></li>
               <li><Link href="/search" className="hover:text-[var(--text-primary)] transition-colors">Search</Link></li>
+              <li><Link href="/shorts" className="hover:text-[var(--text-primary)] transition-colors">Shorts</Link></li>
             </ul>
           </div>
 
           <div>
-            <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Data</h4>
+            <h4 className="text-sm font-semibold text-[var(--text-primary)] mb-3">Company</h4>
             <ul className="space-y-2 text-sm text-[var(--text-muted)]">
+              <li><Link href="/about" className="hover:text-[var(--text-primary)] transition-colors">About</Link></li>
+              <li><Link href="/blog" className="hover:text-[var(--text-primary)] transition-colors">Blog</Link></li>
               <li>
                 <a href="https://www.themoviedb.org" target="_blank" rel="noopener noreferrer" className="hover:text-[var(--text-primary)] transition-colors">
-                  TMDB
+                  Data: TMDB
                 </a>
               </li>
             </ul>
