@@ -258,7 +258,7 @@ export default function FeedPage() {
   const [query, setQuery] = useState('');
 
   const openAuth = () =>
-    window.dispatchEvent(new CustomEvent('movieverse:openAuth', { detail: { tab: 'login' } }));
+    window.dispatchEvent(new CustomEvent('mkmovies:openAuth', { detail: { tab: 'login' } }));
 
   if (!user) {
     return (

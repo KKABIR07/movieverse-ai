@@ -49,7 +49,7 @@ function ShareProfile() {
   const topList    = lists[0];
 
   const shareText = [
-    `🎬 ${user.name}'s MovieVerse Profile`,
+    `🎬 ${user.name}'s mkmovies Profile`,
     `📚 ${lists.length} watchlist${lists.length !== 1 ? 's' : ''} · ${totalItems} saved title${totalItems !== 1 ? 's' : ''}`,
     `👥 Following ${following.length} star${following.length !== 1 ? 's' : ''}`,
     topList?.items[0] ? `❤️ Currently watching: ${topList.items[0].title}` : '',
@@ -107,7 +107,7 @@ function ShareProfile() {
                 </div>
                 <div>
                   <p className="text-sm font-bold text-[var(--text-primary)]">{user.name}</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">MovieVerse Member</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">mkmovies Member</p>
                 </div>
               </div>
               <div className="flex gap-3 pt-1 text-xs text-[var(--text-muted)]">
@@ -147,7 +147,7 @@ export default function ProfilePage() {
   const { lists } = useWatchlistStore();
 
   const openAuth = () =>
-    window.dispatchEvent(new CustomEvent('movieverse:openAuth', { detail: { tab: 'login' } }));
+    window.dispatchEvent(new CustomEvent('mkmovies:openAuth', { detail: { tab: 'login' } }));
 
   if (!user) {
     return (

@@ -50,8 +50,8 @@ export function Header() {
       const detail = (e as CustomEvent).detail;
       openAuth(detail?.tab ?? 'login');
     };
-    window.addEventListener('movieverse:openAuth', handler);
-    return () => window.removeEventListener('movieverse:openAuth', handler);
+    window.addEventListener('mkmovies:openAuth', handler);
+    return () => window.removeEventListener('mkmovies:openAuth', handler);
   }, []);
 
   useEffect(() => {
@@ -94,7 +94,7 @@ export function Header() {
               <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-[var(--accent-primary)]">
                 <Film size={16} className="text-white" />
               </div>
-              <span className="font-bold text-base gradient-text hidden sm:block">MovieVerse</span>
+              <span className="font-bold text-base gradient-text hidden sm:block">mkmovies</span>
             </Link>
           </div>
 

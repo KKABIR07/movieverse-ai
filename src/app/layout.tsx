@@ -13,11 +13,11 @@ const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: { default: 'MovieVerse AI', template: '%s | MovieVerse AI' },
+  title: { default: 'mkmovies', template: '%s | mkmovies' },
   description: 'Discover, review and track movies & TV shows with AI-powered recommendations.',
   keywords: ['movies', 'TV shows', 'reviews', 'ratings', 'recommendations', 'streaming'],
   openGraph: {
-    title: 'MovieVerse AI',
+    title: 'mkmovies',
     description: 'Your cinematic universe. Discover, review, and track movies & TV shows.',
     type: 'website',
   },

@@ -31,7 +31,7 @@ export function ChatWidget() {
     {
       id: 'ai-welcome',
       role: 'assistant',
-      content: "Hi! I'm your MovieVerse AI assistant. Ask me for movie recommendations, plot explanations, director info, or anything film-related! 🎬",
+      content: "Hi! I'm your mkmovies AI assistant. Ask me for movie recommendations, plot explanations, director info, or anything film-related! 🎬",
     },
   ]);
   const [aiLoading, setAiLoading] = useState(false);
@@ -60,7 +60,7 @@ export function ChatWidget() {
     if (typeof window === 'undefined') return;
     let bc: BroadcastChannel;
     try {
-      bc = new BroadcastChannel('movieverse-chat');
+      bc = new BroadcastChannel('mkmovies-chat');
       bc.onmessage = (e) => {
         useChatStore.setState((s) => ({
           messages: [...s.messages.slice(-499), e.data],
@@ -136,7 +136,7 @@ export function ChatWidget() {
                 <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
               )}
               <span className="text-sm font-bold text-[var(--text-primary)]">
-                {activeTab === 'ai' ? 'MovieVerse AI' : 'Community Chat'}
+                {activeTab === 'ai' ? 'mkmovies AI' : 'Community Chat'}
               </span>
             </div>
             <button

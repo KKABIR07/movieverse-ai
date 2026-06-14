@@ -86,6 +86,6 @@ export const useAuthStore = create<AuthStore>()(
 
       clearError: () => set({ error: null }),
     }),
-    { name: 'movieverse-auth', partialize: (s) => ({ user: s.user }) }
+    { name: 'mkmovies-auth', partialize: (s) => ({ user: s.user }) }
   )
 );

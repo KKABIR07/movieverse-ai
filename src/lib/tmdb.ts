@@ -50,7 +50,7 @@ api.interceptors.response.use(
   (err) => {
     if (err.message === 'TMDB_KEY_MISSING') return Promise.reject(err);
     if (err.response?.status === 401) {
-      console.warn('[MovieVerse] TMDB 401: check NEXT_PUBLIC_TMDB_BEARER in .env.local');
+      console.warn('[mkmovies] TMDB 401: check NEXT_PUBLIC_TMDB_BEARER in .env.local');
     } else {
       console.error('TMDB API Error:', err.response?.status, err.message);
     }

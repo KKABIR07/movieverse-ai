@@ -92,7 +92,7 @@ export default function HomePage() {
           </div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">Add your TMDB API key</h1>
           <p className="text-[var(--text-secondary)] leading-relaxed">
-            MovieVerse needs a free TMDB API key to fetch movie data. It takes about 2 minutes to set up.
+            mkmovies needs a free TMDB API key to fetch movie data. It takes about 2 minutes to set up.
           </p>
           <div className="glass rounded-xl p-4 text-left space-y-3">
             <p className="text-sm font-medium text-[var(--text-primary)]">Quick setup:</p>

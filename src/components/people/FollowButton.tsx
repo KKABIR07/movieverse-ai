@@ -24,7 +24,7 @@ export function FollowButton({ person, size = 'md', className = '', onAuthRequir
     e.stopPropagation();
     if (!user) {
       onAuthRequired?.();
-      window.dispatchEvent(new CustomEvent('movieverse:openAuth', { detail: { tab: 'login' } }));
+      window.dispatchEvent(new CustomEvent('mkmovies:openAuth', { detail: { tab: 'login' } }));
       return;
     }
     setLoading(true);

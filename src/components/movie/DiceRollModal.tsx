@@ -103,7 +103,7 @@ export function DiceRollModal({ open, onClose }: Props) {
 
   const handleSave = () => {
     if (!result || !user) {
-      window.dispatchEvent(new CustomEvent('movieverse:openAuth', { detail: { tab: 'login' } }));
+      window.dispatchEvent(new CustomEvent('mkmovies:openAuth', { detail: { tab: 'login' } }));
       return;
     }
     add({

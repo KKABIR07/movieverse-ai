@@ -84,7 +84,7 @@ export const useChatStore = create<ChatStore>()(
         // Broadcast to other tabs
         if (typeof window !== 'undefined') {
           try {
-            const bc = new BroadcastChannel('movieverse-chat');
+            const bc = new BroadcastChannel('mkmovies-chat');
             bc.postMessage(msg);
             bc.close();
           } catch {
@@ -99,7 +99,7 @@ export const useChatStore = create<ChatStore>()(
       resetUnread: () => set({ unreadCount: 0 }),
     }),
     {
-      name: 'movieverse-chat',
+      name: 'mkmovies-chat',
       partialize: (s) => ({ messages: s.messages, activeRoom: s.activeRoom }),
     }
   )

@@ -141,7 +141,7 @@ export const useWatchlistStore = create<WatchlistStore>()(
       },
     }),
     {
-      name: 'movieverse-watchlist',
+      name: 'mkmovies-watchlist',
       version: 2,
       migrate: (persisted: unknown, version: number) => {
         if (version < 2) {
@@ -198,7 +198,7 @@ export const useReviewsStore = create<ReviewsStore>()(
         })),
       getMovieReviews: (movieId) => get().reviews.filter((r) => r.movieId === movieId),
     }),
-    { name: 'movieverse-reviews' }
+    { name: 'mkmovies-reviews' }
   )
 );
 
@@ -232,6 +232,6 @@ export const useRatingsStore = create<RatingsStore>()(
         set((s) => ({ ratings: { ...s.ratings, [movieId]: rating } })),
       getRating: (movieId) => get().ratings[movieId] ?? null,
     }),
-    { name: 'movieverse-ratings' }
+    { name: 'mkmovies-ratings' }
   )
 );

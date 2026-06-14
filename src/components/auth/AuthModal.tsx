@@ -48,7 +48,7 @@ export function AuthModal({ open, onClose, defaultTab = 'login' }: AuthModalProp
             <div className="w-7 h-7 rounded-lg bg-[var(--accent-primary)] flex items-center justify-center">
               <Film size={14} className="text-white" />
             </div>
-            <span className="font-bold gradient-text">MovieVerse</span>
+            <span className="font-bold gradient-text">mkmovies</span>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors">
             <X size={18} />

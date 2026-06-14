@@ -205,7 +205,7 @@ export default function ShortsPage() {
 
   const handleSave = () => {
     if (!user) {
-      window.dispatchEvent(new CustomEvent('movieverse:openAuth', { detail: { tab: 'login' } }));
+      window.dispatchEvent(new CustomEvent('mkmovies:openAuth', { detail: { tab: 'login' } }));
       return;
     }
     add({
