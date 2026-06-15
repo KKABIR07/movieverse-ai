@@ -1,9 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import {
-  Film, Star, Bookmark, Users, Brain, Tv, Play,
-  Globe, Shield, Zap, Heart, ChevronRight,
-} from 'lucide-react';
+import Image from 'next/image';
+import { Film, Mail, GitBranch, ExternalLink, Zap, Users, Globe, Heart } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'About mkmovies',
@@ -23,54 +21,45 @@ export const metadata: Metadata = {
   alternates: { canonical: 'https://mkmovies.site/about' },
 };
 
-const FEATURES = [
+const STATS = [
+  { value: '900K+', label: 'Movies & Shows' },
+  { value: '500K+', label: 'Recommendations served' },
+  { value: '190+', label: 'Countries reached' },
+  { value: '100%', label: 'Free to use' },
+];
+
+const VALUES = [
   {
-    icon: Brain,
-    title: 'AI-Powered Recommendations',
-    desc: "Describe what you're in the mood for in plain language and our AI assistant surfaces films that genuinely match — not just genre keywords.",
-  },
-  {
-    icon: Bookmark,
-    title: 'Smart Watchlists',
-    desc: 'Create multiple named lists, save titles in one tap, and share your watchlist with friends. Your data syncs across all your devices.',
-  },
-  {
-    icon: Play,
-    title: 'YouTube Shorts & Clips',
-    desc: 'Every movie and TV show detail page surfaces related YouTube Shorts, trailers, and scene clips — watch before you commit.',
-  },
-  {
-    icon: Star,
-    title: 'Rate & Review',
-    desc: 'Rate films on a 1–10 scale, write reviews, and build a viewing history that makes future recommendations more accurate.',
+    icon: Zap,
+    title: 'Speed & Simplicity',
+    desc: 'Finding your next favourite film should take seconds, not scrolling sessions. Every feature is designed to remove friction and surface great cinema fast.',
   },
   {
     icon: Users,
-    title: 'Follow Your Favourite Stars',
-    desc: 'Follow actors and directors. Their new releases appear in your personalised Feed alongside YouTube interviews and behind-the-scenes videos.',
-  },
-  {
-    icon: Tv,
-    title: 'TV Show Tracking',
-    desc: 'Full TV show support with season and episode data, cast details, streaming providers, and series status for every show in our database.',
+    title: 'Community First',
+    desc: 'Cinema is meant to be shared. We build tools that help film lovers connect, follow creators they admire, and discover what people like them are watching.',
   },
   {
     icon: Globe,
-    title: 'Worldwide Coverage',
-    desc: 'Powered by The Movie Database (TMDB) — over 900,000 movies and TV shows from every country, language, and era.',
+    title: 'Global Reach',
+    desc: "Whether you're into Hollywood blockbusters or Korean thrillers, French drama or Japanese animation — our database covers over 900,000 titles from every corner of the world.",
   },
   {
-    icon: Zap,
-    title: 'Blazing Fast',
-    desc: 'Built on Next.js with edge caching and optimised data fetching. Pages load in under a second, even on mobile connections.',
+    icon: Heart,
+    title: 'Built with Care',
+    desc: 'Every page, every recommendation, every API call — crafted with obsessive attention to quality, speed, and the belief that great cinema deserves great tooling.',
   },
 ];
 
-const STATS = [
-  { value: '900K+', label: 'Movies & Shows' },
-  { value: '100%', label: 'Free to Use' },
-  { value: 'AI', label: 'Recommendations' },
-  { value: '∞', label: 'Discovery' },
+const TEAM = [
+  { initials: 'ET', role: 'Engineering Team', label: 'Full Stack & AI' },
+  { initials: 'DT', role: 'Design Team', label: 'UX & Brand' },
+  { initials: 'GT', role: 'Growth Team', label: 'Marketing & Community' },
+  { initials: 'ST', role: 'Support Team', label: 'User Success' },
+];
+
+const SKILLS = [
+  'Next.js', 'Node.js', 'TypeScript', 'MongoDB', 'AI / LLM', 'TMDB API', 'TailwindCSS', 'Zustand',
 ];
 
 export default function AboutPage() {
@@ -78,38 +67,23 @@ export default function AboutPage() {
     <div className="min-h-screen pt-20 pb-20">
 
       {/* ── Hero ── */}
-      <section className="relative py-20 overflow-hidden">
+      <section className="relative py-24 overflow-hidden">
         <div
           className="absolute inset-0 opacity-10"
           style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 0%, #7c3aed, transparent)' }}
         />
         <div className="container mx-auto px-4 md:px-8 text-center relative">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[var(--accent-primary)]/30 bg-[var(--accent-primary)]/10 text-xs font-semibold text-[var(--accent-primary)] uppercase tracking-widest mb-6">
-            <Film size={12} /> About mkmovies
+            <Film size={12} /> Our Story
           </div>
           <h1 className="text-4xl md:text-6xl font-black text-[var(--text-primary)] leading-tight mb-6 max-w-3xl mx-auto">
-            Your cinematic universe,{' '}
-            <span className="gradient-text">organised</span>
+            Built for the future of{' '}
+            <span className="gradient-text">cinematic discovery</span>
           </h1>
-          <p className="text-lg md:text-xl text-[var(--text-secondary)] max-w-2xl mx-auto leading-relaxed mb-10">
-            mkmovies is a free movie and TV discovery platform powered by AI. Search over 900,000 titles,
-            get personalised recommendations, track everything you want to watch, and follow the
-            stars whose work you love.
+          <p className="text-lg md:text-xl text-[var(--text-secondary)] max-w-2xl mx-auto leading-relaxed">
+            mkmovies was built with a single mission: make it effortless for anyone to discover,
+            track, and fall in love with movies and TV shows — with AI as your personal guide.
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-4">
-            <Link
-              href="/trending"
-              className="px-6 py-3 bg-[var(--accent-primary)] text-white font-semibold rounded-xl hover:bg-[var(--accent-secondary)] transition-colors text-sm"
-            >
-              Start Discovering
-            </Link>
-            <Link
-              href="/blog"
-              className="px-6 py-3 border border-[var(--border)] text-[var(--text-secondary)] font-semibold rounded-xl hover:border-[var(--accent-primary)] hover:text-[var(--text-primary)] transition-colors text-sm"
-            >
-              Read Our Blog
-            </Link>
-          </div>
         </div>
       </section>
 
@@ -127,127 +101,135 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* ── Mission ── */}
-      <section className="py-20">
-        <div className="container mx-auto px-4 md:px-8 max-w-3xl text-center">
-          <h2 className="text-3xl md:text-4xl font-black text-[var(--text-primary)] mb-6">
-            Why we built mkmovies
+      {/* ── Values ── */}
+      <section className="py-24">
+        <div className="container mx-auto px-4 md:px-8 max-w-5xl">
+          <h2 className="text-3xl md:text-4xl font-black text-[var(--text-primary)] text-center mb-14">
+            What we stand for
           </h2>
-          <p className="text-[var(--text-secondary)] leading-relaxed text-lg mb-6">
-            The streaming era created an abundance problem. With over 900,000 titles across dozens
-            of platforms, the challenge is no longer <em>access</em> — it's <em>discovery</em>. Existing
-            tools either show you what's trending (the same 20 movies everyone else is watching) or
-            drown you in undifferentiated lists.
-          </p>
-          <p className="text-[var(--text-secondary)] leading-relaxed text-lg mb-6">
-            mkmovies is built around the idea that great cinema should be findable. Whether you're
-            looking for a quiet French drama from the 1990s, a Korean thriller that hasn't broken
-            through to Western audiences, or just something your whole family can agree on tonight —
-            mkmovies should surface it, with context.
-          </p>
-          <p className="text-[var(--text-secondary)] leading-relaxed text-lg">
-            We built AI into the discovery experience from day one, not as a gimmick, but because
-            natural language is the only interface expressive enough to capture what you actually
-            want from a film.
-          </p>
-        </div>
-      </section>
-
-      {/* ── Features ── */}
-      <section className="py-20 bg-[var(--bg-secondary)]">
-        <div className="container mx-auto px-4 md:px-8">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl md:text-4xl font-black text-[var(--text-primary)] mb-4">
-              Everything you need to watch better
-            </h2>
-            <p className="text-[var(--text-muted)] max-w-xl mx-auto">
-              Built for people who care about what they watch, not just what's popular.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {FEATURES.map(({ icon: Icon, title, desc }) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+            {VALUES.map(({ icon: Icon, title, desc }) => (
               <div
                 key={title}
-                className="glass rounded-2xl p-6 border border-[var(--border)] hover:border-[var(--accent-primary)]/40 transition-colors group"
+                className="glass rounded-2xl p-8 border border-[var(--border)] hover:border-[var(--accent-primary)]/40 transition-colors group"
               >
-                <div className="w-10 h-10 rounded-xl bg-[var(--accent-primary)]/10 flex items-center justify-center mb-4 group-hover:bg-[var(--accent-primary)]/20 transition-colors">
-                  <Icon size={18} className="text-[var(--accent-primary)]" />
+                <div className="w-11 h-11 rounded-xl bg-[var(--accent-primary)]/10 flex items-center justify-center mb-5 group-hover:bg-[var(--accent-primary)]/20 transition-colors">
+                  <Icon size={20} className="text-[var(--accent-primary)]" />
                 </div>
-                <h3 className="text-sm font-bold text-[var(--text-primary)] mb-2">{title}</h3>
-                <p className="text-xs text-[var(--text-muted)] leading-relaxed">{desc}</p>
+                <h3 className="text-base font-bold text-[var(--text-primary)] mb-2">{title}</h3>
+                <p className="text-sm text-[var(--text-muted)] leading-relaxed">{desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── Data source ── */}
-      <section className="py-20">
-        <div className="container mx-auto px-4 md:px-8 max-w-3xl">
-          <div className="glass rounded-3xl border border-[var(--border)] p-10 text-center">
-            <div className="w-14 h-14 rounded-2xl bg-green-500/10 border border-green-500/20 flex items-center justify-center mx-auto mb-6">
-              <Shield size={24} className="text-green-400" />
+      {/* ── Founder ── */}
+      <section className="py-24 bg-[var(--bg-secondary)]">
+        <div className="container mx-auto px-4 md:px-8 max-w-4xl">
+          <div className="text-center mb-12">
+            <p className="text-xs font-semibold text-[var(--accent-primary)] uppercase tracking-widest mb-2">Leadership</p>
+            <h2 className="text-3xl md:text-4xl font-black text-[var(--text-primary)]">Founder &amp; CEO</h2>
+          </div>
+
+          <div className="glass rounded-3xl border border-[var(--border)] p-8 md:p-12">
+            <div className="flex flex-col md:flex-row gap-8 items-start">
+              {/* Avatar */}
+              <div className="flex-shrink-0">
+                <div className="w-28 h-28 rounded-2xl overflow-hidden ring-2 ring-[var(--accent-primary)]/30 shadow-lg">
+                  <Image
+                    src="/ceo.png"
+                    alt="Masum Kabir Biswas — Founder & CEO"
+                    width={112}
+                    height={112}
+                    className="w-full h-full object-cover object-top"
+                    priority
+                  />
+                </div>
+                <div className="mt-3 text-center">
+                  <span className="text-xs text-[var(--text-muted)] bg-[var(--accent-primary)]/10 border border-[var(--accent-primary)]/20 rounded-full px-3 py-1">
+                    Founder &amp; CEO
+                  </span>
+                </div>
+              </div>
+
+              {/* Bio */}
+              <div className="flex-1 min-w-0">
+                <h3 className="text-2xl font-black text-[var(--text-primary)] mb-1">Masum Kabir Biswas</h3>
+                <p className="text-sm text-[var(--accent-primary)] font-semibold mb-4">Building mkmovies · Full Stack &amp; AI Engineer</p>
+                <p className="text-[var(--text-secondary)] leading-relaxed mb-4 text-sm">
+                  Masum is a full-stack engineer and AI architect with a passion for building products that
+                  help people discover things they love. He founded mkmovies to solve a problem he
+                  experienced firsthand — the existing movie platforms were either clunky, paywalled, or
+                  completely lacked AI-native discovery.
+                </p>
+                <p className="text-[var(--text-secondary)] leading-relaxed text-sm mb-6">
+                  He built the entire platform — frontend, backend, AI integration, watchlist infrastructure,
+                  and deployment — from the ground up. His philosophy: ship fast, obsess over quality,
+                  and never stop improving the discovery experience.
+                </p>
+
+                {/* Skills */}
+                <div className="flex flex-wrap gap-2 mb-6">
+                  {SKILLS.map((skill) => (
+                    <span
+                      key={skill}
+                      className="text-xs font-medium px-3 py-1 rounded-full bg-[var(--accent-primary)]/10 border border-[var(--accent-primary)]/20 text-[var(--accent-primary)]"
+                    >
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Social links */}
+                <div className="flex items-center gap-4">
+                  <a
+                    href="mailto:neuraforz@gmail.com"
+                    className="flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--accent-primary)] transition-colors"
+                  >
+                    <Mail size={15} /> Email
+                  </a>
+                  <a
+                    href="https://github.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--accent-primary)] transition-colors"
+                  >
+                    <GitBranch size={15} /> GitHub
+                  </a>
+                  <a
+                    href="https://linkedin.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--accent-primary)] transition-colors"
+                  >
+                    <ExternalLink size={15} /> LinkedIn
+                  </a>
+                </div>
+              </div>
             </div>
-            <h2 className="text-2xl font-black text-[var(--text-primary)] mb-4">
-              Powered by TMDB — trusted by millions
-            </h2>
-            <p className="text-[var(--text-secondary)] leading-relaxed mb-6">
-              All movie and TV show data on mkmovies is sourced from{' '}
-              <a
-                href="https://www.themoviedb.org"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[var(--accent-primary)] hover:underline"
-              >
-                The Movie Database (TMDB)
-              </a>
-              , the world's largest community-built movie database. TMDB covers over 900,000 titles
-              across every genre, language, and era — with comprehensive cast, crew, rating, and
-              streaming provider data updated continuously.
-            </p>
-            <p className="text-xs text-[var(--text-muted)]">
-              mkmovies is not affiliated with or endorsed by TMDB. This product uses the TMDB API
-              but is not certified or approved by TMDB.
-            </p>
           </div>
         </div>
       </section>
 
-      {/* ── Values ── */}
-      <section className="py-20 bg-[var(--bg-secondary)]">
+      {/* ── Team ── */}
+      <section className="py-24">
         <div className="container mx-auto px-4 md:px-8 max-w-4xl">
-          <h2 className="text-3xl font-black text-[var(--text-primary)] text-center mb-14">
-            What we believe
-          </h2>
-          <div className="space-y-8">
-            {[
-              {
-                icon: '🔒',
-                title: 'Your data stays yours',
-                body: 'Your watchlist, ratings, and viewing history are yours. We don\'t sell data to advertisers. We don\'t use your behaviour to manipulate what you see. mkmovies is a tool, not a platform optimised against your interests.',
-              },
-              {
-                icon: '🌍',
-                title: 'Global cinema deserves equal space',
-                body: 'English-language Hollywood dominates algorithms because it dominates audiences. mkmovies treats Korean thriller, French drama, Japanese animation, and Bengali cinema as equally valid objects of discovery — because great filmmaking happens everywhere.',
-              },
-              {
-                icon: '💡',
-                title: 'Discovery should be free',
-                body: 'Finding great films to watch should not cost money. mkmovies is free to use, free to sign up, and free to explore. No paywalls, no feature tiers, no subscription required. We make no promises about the future, but this is our commitment right now.',
-              },
-              {
-                icon: '❤️',
-                title: 'Cinema matters',
-                body: 'Films change how people see the world, themselves, and each other. We take that seriously. The recommendations we surface, the context we provide, and the tools we build are all oriented around the idea that great cinema is worth finding — and worth watching properly.',
-              },
-            ].map(({ icon, title, body }) => (
-              <div key={title} className="flex gap-5">
-                <span className="text-2xl flex-shrink-0 mt-0.5">{icon}</span>
-                <div>
-                  <h3 className="text-base font-bold text-[var(--text-primary)] mb-2">{title}</h3>
-                  <p className="text-[var(--text-secondary)] leading-relaxed text-sm">{body}</p>
+          <div className="text-center mb-12">
+            <p className="text-xs font-semibold text-[var(--accent-primary)] uppercase tracking-widest mb-2">Behind the scenes</p>
+            <h2 className="text-3xl md:text-4xl font-black text-[var(--text-primary)]">The team</h2>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {TEAM.map(({ initials, role, label }) => (
+              <div
+                key={role}
+                className="glass rounded-2xl border border-[var(--border)] p-6 text-center hover:border-[var(--accent-primary)]/40 transition-colors"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-[var(--accent-primary)]/10 border border-[var(--accent-primary)]/20 flex items-center justify-center mx-auto mb-4 text-[var(--accent-primary)] text-lg font-black">
+                  {initials}
                 </div>
+                <p className="text-sm font-bold text-[var(--text-primary)] mb-1">{role}</p>
+                <p className="text-xs text-[var(--text-muted)]">{label}</p>
               </div>
             ))}
           </div>
@@ -255,30 +237,20 @@ export default function AboutPage() {
       </section>
 
       {/* ── CTA ── */}
-      <section className="py-20">
+      <section className="py-20 bg-[var(--bg-secondary)]">
         <div className="container mx-auto px-4 md:px-8 text-center">
-          <Heart size={32} className="text-[var(--accent-primary)] mx-auto mb-6" />
           <h2 className="text-3xl md:text-4xl font-black text-[var(--text-primary)] mb-4">
-            Ready to find your next favourite film?
+            Ready to discover your next favourite film?
           </h2>
           <p className="text-[var(--text-muted)] mb-8 max-w-lg mx-auto">
-            Browse over 900,000 titles, get AI-powered recommendations, and build watchlists
-            you'll actually use.
+            Join thousands of film lovers who trust mkmovies to find what&apos;s worth watching.
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-4">
-            <Link
-              href="/"
-              className="flex items-center gap-2 px-8 py-3.5 bg-[var(--accent-primary)] text-white font-bold rounded-xl hover:bg-[var(--accent-secondary)] transition-colors"
-            >
-              Explore mkmovies <ChevronRight size={16} />
-            </Link>
-            <Link
-              href="/blog"
-              className="flex items-center gap-2 px-8 py-3.5 border border-[var(--border)] text-[var(--text-secondary)] font-bold rounded-xl hover:border-[var(--accent-primary)] transition-colors"
-            >
-              Read the Blog
-            </Link>
-          </div>
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 px-8 py-3.5 bg-[var(--accent-primary)] text-white font-bold rounded-xl hover:bg-[var(--accent-secondary)] transition-colors"
+          >
+            Get started free
+          </Link>
         </div>
       </section>
 
