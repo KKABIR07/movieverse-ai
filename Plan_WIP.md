@@ -6,7 +6,13 @@
 > 2026-11-25: user asked: full visual redesign + full bug scan/fix + tests + deploy to Rizuan OCI box mkb-007
 > (163.192.105.150) capped at 1 GB RAM / 5 GB storage, then remove Vercel entirely.
 > Domain assumed www.mkmovies.site (www canonical, apex → www) — CONFIRM.
-> Status: audits done (backend, frontend, live crawl). WAITING FOR PLAN + MOCKUP APPROVAL. No code changed yet.
+> 2026-11-25: user APPROVED plan + mockup ("Build the website. I will set the DNS."). Domain confirmed www.mkmovies.site.
+> Branch `feature/oci-redesign`: Plan_WIP + test tooling committed (repo git identity set to KKABIR07).
+> WAVE 1 running in worktrees: backend (Phase 1 + TMDB server-side + /api/health), foundation (tokens, shell,
+> primitives, media comps, stores), infra (Docker, caps, Caddy, deploy.sh, next.config, robots).
+> NEXT: merge wave 1 → WAVE 2 page agents (P1 browse pages, P2 detail/user pages) → tests/e2e → deploy.
+> Dev on this PC needs NODE_OPTIONS=--require=<scratchpad>/dev-dns.cjs (Jio blocks TMDB DNS). JWT_SECRET in
+> .env.local is a placeholder — prod gets a generated one. Mockup: https://claude.ai/artifact/25VY1mgzhLi6zz33aikZh8
 
 ## Target box (verified read-only 2026-11-25)
 - mkb-007, Ubuntu arm64, 4 OCPU / 23 GiB (20 GiB free), 169 GB disk free, ext4. Docker + host Caddy.
