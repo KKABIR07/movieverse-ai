@@ -22,10 +22,13 @@ PROJECT=mkmovies
 CONTAINER=mkmovies-web
 IMAGE=mkmovies-web
 REQUIRED_KEYS="TMDB_BEARER MONGODB_URI JWT_SECRET GROQ_API_KEY YOUTUBE_API_KEY"
+ORIGIN_CERT=/etc/caddy/certs/mkmovies.site.pem
+ORIGIN_KEY=/etc/caddy/certs/mkmovies.site.key
+CF_SNIPPET=/etc/caddy/mkmovies/cloudflare-ips.caddy
 
 DO_CADDY=1
 DRY_RUN=0
-usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; }
 for arg in "$@"; do
   case "$arg" in
     --no-caddy) DO_CADDY=0 ;;
@@ -50,7 +53,7 @@ log "Validate inputs"
 for bin in git ssh scp sed; do command -v "$bin" >/dev/null || die "missing local tool: $bin"; done
 cd "$ROOT"
 git rev-parse --verify -q HEAD >/dev/null || die "not a git repository with commits: $ROOT"
-for f in Dockerfile docker-compose.yml .env.example deploy/Caddyfile.mkmovies scripts/setup-storage.sh; do
+for f in Dockerfile docker-compose.yml .env.example deploy/Caddyfile.mkmovies deploy/cloudflare-ips.caddy scripts/setup-storage.sh; do
   git cat-file -e "HEAD:$f" 2>/dev/null || die "$f is not committed at HEAD (deploy ships HEAD only)"
 done
 for k in $REQUIRED_KEYS; do
@@ -60,8 +63,8 @@ REV="$(git rev-parse --short HEAD)"
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "WARNING: uncommitted changes are not deployed (shipping HEAD $REV)." >&2
 fi
-CADDY_BLOCK="$(sed "s/__APP_PORT__/$APP_PORT/g" deploy/Caddyfile.mkmovies)"
-grep -q '__APP_PORT__' <<<"$CADDY_BLOCK" && die "Caddy template still has placeholders"
+CADDY_BLOCK="$(sed -e "s/__APP_PORT__/$APP_PORT/g" -e "s|__CF_SNIPPET__|$CF_SNIPPET|g" deploy/Caddyfile.mkmovies)"
+grep -qE '__(APP_PORT|CF_SNIPPET)__' <<<"$CADDY_BLOCK" && die "Caddy template still has placeholders"
 echo "OK: host=$DEPLOY_USER@$DEPLOY_HOST dir=$APP_DIR port=127.0.0.1:$APP_PORT rev=$REV caddy=$DO_CADDY max_image=${MAX_IMAGE_MB}MB"
 
 if [[ $DRY_RUN -eq 1 ]]; then
@@ -74,10 +77,12 @@ if [[ $DRY_RUN -eq 1 ]]; then
   5. first run: .env from .env.example + generated JWT_SECRET; stop if required keys are empty
   6. tag $IMAGE:latest -> $IMAGE:previous, docker compose -p $PROJECT build
   7. image size <= ${MAX_IMAGE_MB} MB, then up -d; prune dangling images + old build cache
-  8. Caddy block (marker-managed, validated, rolled back on failure):
+  8. health: http://127.0.0.1:$APP_PORT/api/health (Caddy untouched if this fails)
+  9. require origin cert $ORIGIN_CERT + key; upload CF-IP snippet -> $CF_SNIPPET
+ 10. Caddy block (marker-managed, validated, rolled back on failure):
 PLAN
   [[ $DO_CADDY -eq 1 ]] && sed 's/^/       | /' <<<"$CADDY_BLOCK" || echo "       (skipped: --no-caddy)"
-  echo "  9. health: http://127.0.0.1:$APP_PORT/api/health ; docker stats ; df -h $APP_DIR"
+  echo " 11. docker stats ; df -h $APP_DIR"
   exit 0
 fi
 
@@ -179,37 +184,63 @@ docker image prune -f >/dev/null
 docker builder prune -f --filter until=168h >/dev/null 2>&1 || true
 EOF
 
+log "Health check (container, loopback)"
+healthy=0
+for _ in $(seq 1 40); do
+  if "${SSH[@]}" "curl -fsS -o /dev/null http://127.0.0.1:$APP_PORT/api/health"; then healthy=1; break; fi
+  sleep 3
+done
+if [[ $healthy -ne 1 ]]; then
+  echo "Health check FAILED — Caddy was NOT touched. Logs (roll back with scripts/rollback.sh):" >&2
+  "${SSH[@]}" "docker logs --tail 80 $CONTAINER" >&2 || true
+  exit 1
+fi
+echo "healthy: http://127.0.0.1:$APP_PORT/api/health"
+
 if [[ $DO_CADDY -eq 1 ]]; then
-  log "Caddy site block (marker-managed, validated before reload, rolled back on failure)"
+  log "Caddy site block (Cloudflare origin cert, CF-only lock; validated, rolled back on failure)"
+  # Refuse to wire the public site until the Cloudflare Origin Certificate is installed.
+  if ! "${SSH[@]}" "sudo test -s $ORIGIN_CERT && sudo test -s $ORIGIN_KEY"; then
+    echo "Cloudflare origin certificate not found on the box ($ORIGIN_CERT / $ORIGIN_KEY)." >&2
+    echo "Run: ./scripts/install-origin-cert.sh <origin-cert.pem> <origin-key.pem>   then re-run deploy." >&2
+    echo "The app IS running on 127.0.0.1:$APP_PORT, but it is not published through Caddy yet." >&2
+    exit 6
+  fi
   printf '%s\n' "$CADDY_BLOCK" | "${SSH[@]}" "cat > /tmp/mkmovies.caddy"
-  "${SSH[@]}" bash -s <<'EOF'
+  "${SSH[@]}" "cat > /tmp/mkmovies-cf-ips.caddy" < deploy/cloudflare-ips.caddy
+  "${SSH[@]}" "CF_SNIPPET=$CF_SNIPPET bash -s" <<'EOF'
 set -euo pipefail
 CF=/etc/caddy/Caddyfile
-BAK="$CF.bak-$(date +%Y%m%d%H%M%S)-mkmovies"
+STAMP="$(date +%Y%m%d%H%M%S)"
+BAK="$CF.bak-$STAMP-mkmovies"
 sudo cp "$CF" "$BAK"
+SNIP_BAK=""
+if sudo test -f "$CF_SNIPPET"; then SNIP_BAK="$CF_SNIPPET.bak-$STAMP"; sudo cp "$CF_SNIPPET" "$SNIP_BAK"; fi
+restore() {
+  sudo cp "$BAK" "$CF"
+  if [ -n "$SNIP_BAK" ]; then sudo cp "$SNIP_BAK" "$CF_SNIPPET"; fi
+}
 sudo install -d -o caddy -g caddy -m 755 /var/log/caddy 2>/dev/null || sudo mkdir -p /var/log/caddy
+sudo install -d -o root -g root -m 755 "$(dirname "$CF_SNIPPET")"
+sudo install -o root -g root -m 644 /tmp/mkmovies-cf-ips.caddy "$CF_SNIPPET" && rm -f /tmp/mkmovies-cf-ips.caddy
 sudo sed -i '/^# BEGIN mkmovies/,/^# END mkmovies/d' "$CF"
 sudo tee -a "$CF" </tmp/mkmovies.caddy >/dev/null && rm -f /tmp/mkmovies.caddy
 if ! sudo caddy validate --config "$CF" --adapter caddyfile >/dev/null 2>/tmp/mkmovies-caddy-validate.log; then
   echo "caddy validate FAILED — restoring $BAK" >&2
-  cat /tmp/mkmovies-caddy-validate.log >&2
-  sudo cp "$BAK" "$CF"
+  tail -5 /tmp/mkmovies-caddy-validate.log >&2
+  restore
   exit 5
 fi
-sudo systemctl reload caddy
+if ! sudo systemctl reload caddy; then
+  echo "caddy reload FAILED — restoring $BAK and reloading" >&2
+  restore
+  sudo systemctl reload caddy || true
+  exit 5
+fi
 echo "Caddy reloaded (backup: $BAK)"
 EOF
 fi
 
-log "Health check"
-for _ in $(seq 1 40); do
-  if "${SSH[@]}" "curl -fsS -o /dev/null http://127.0.0.1:$APP_PORT/api/health"; then
-    "${SSH[@]}" "docker stats --no-stream --format 'container={{.Name}} mem={{.MemUsage}} cpu={{.CPUPerc}}' $CONTAINER; df -h $APP_DIR; docker image ls $IMAGE"
-    echo "OK: rev $REV serving on 127.0.0.1:$APP_PORT. Public: https://www.mkmovies.site (needs DNS A @/www -> $DEPLOY_HOST)"
-    exit 0
-  fi
-  sleep 3
-done
-echo "Health check FAILED. Logs (roll back with scripts/rollback.sh):" >&2
-"${SSH[@]}" "docker logs --tail 80 $CONTAINER" >&2 || true
-exit 1
+log "Resource usage"
+"${SSH[@]}" "docker stats --no-stream --format 'container={{.Name}} mem={{.MemUsage}} cpu={{.CPUPerc}}' $CONTAINER; df -h $APP_DIR; docker image ls $IMAGE"
+echo "OK: rev $REV serving on 127.0.0.1:$APP_PORT. Public: https://www.mkmovies.site (via Cloudflare, proxied A @/www -> $DEPLOY_HOST)"
