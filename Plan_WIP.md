@@ -85,6 +85,12 @@
 - [x] Copy `.env.local`, install deps, build + dev server verified (2026-11-25)
 - [x] Backend + frontend audits (2026-11-25)
 
+## Cloudflare (user request 2026-11-25)
+- Site goes Cloudflare (proxied) → Caddy (CF Origin cert, Full strict, origin locked to CF IPs at site scope) → app :3120.
+- GoDaddy DNS state 2026-11-25: A @ and A www → 163.192.105.150 (published). Vercel project already DEPLOYMENT_DISABLED (402).
+- [ ] USER: add mkmovies.site to Cloudflare, set the 2 CF nameservers at GoDaddy, SSL Full (strict), create Origin cert.
+- [ ] Install origin cert on box (scripts/install-origin-cert.sh) → Caddy block → deploy.
+
 ## Blockers / Notes
 - BLOCKER (2026-11-25 crawl): Atlas SRV `_mongodb._tcp.cluster0.7sih1sg.mongodb.net` = NXDOMAIN (local + 8.8.8.8) →
   cluster paused or deleted → signup/login/reviews/follows all 500. USER must resume it (or give a new URI).
