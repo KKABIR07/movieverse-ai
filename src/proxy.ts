@@ -56,7 +56,7 @@ function isSameOrigin(req: NextRequest, origin: string): boolean {
 function hasBody(req: NextRequest): boolean {
   const len = req.headers.get('content-length');
   if (len !== null) return Number(len) > 0;
-  return req.headers.has('transfer-encoding');
+  return req.headers.has('transfer-encoding') || req.body !== null;
 }
 
 export function proxy(req: NextRequest) {
