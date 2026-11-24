@@ -63,7 +63,7 @@ interface FilterStore {
 }
 
 export const useFilterStore = create<FilterStore>()((set, get) => ({
-  sidebarOpen: true,
+  sidebarOpen: false,
   activeRegion: 'all',
   activeGenres: [],
   activeContentType: 'both',

@@ -91,6 +91,6 @@ export const useFollowingStore = create<FollowingStore>()(
 
       reset: () => set({ following: [], counts: {} }),
     }),
-    { name: 'mkmovies-following' }
+    { name: 'mkmovies-following', skipHydration: true, partialize: (s) => ({ following: s.following, counts: s.counts }) }
   )
 );
