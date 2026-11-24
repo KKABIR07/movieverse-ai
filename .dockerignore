@@ -1,0 +1,23 @@
+node_modules
+.next
+.git
+.claude
+.vercel
+.env
+.env.*
+!.env.example
+tests
+e2e
+coverage
+playwright-report
+test-results
+*.tsbuildinfo
+Plan_WIP.md
+CLAUDE_REFERENCE
+ss
+# On the box, /opt/mkmovies is an ext4 loop mount: lost+found is root-only and must not be sent.
+lost+found
+data
+backups
+scripts
+deploy

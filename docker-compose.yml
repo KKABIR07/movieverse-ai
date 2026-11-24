@@ -1,0 +1,43 @@
+# MovieVerse AI (mkmovies) on the OCI box (mkb-007). Run with: docker compose -p mkmovies --env-file .env up -d --build
+# Caddy (host) terminates TLS for www.mkmovies.site and proxies to 127.0.0.1:${APP_PORT}.
+# Database is MongoDB Atlas — nothing stateful runs in this project.
+services:
+  web:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://www.mkmovies.site}
+    image: mkmovies-web:latest
+    container_name: mkmovies-web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Keep the V8 heap well under the container cap so Node GCs instead of being OOM-killed.
+      NODE_OPTIONS: --max-old-space-size=640
+    ports:
+      - "127.0.0.1:${APP_PORT:-3120}:3000" # loopback only; never exposed publicly
+    # Hard caps: 1 GB RAM with no extra swap, 1 CPU, bounded process count.
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
+    # Immutable root filesystem; the only writable paths are size-capped RAM-backed tmpfs
+    # (they count against the 1 GB memory cap, not the disk).
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+      - /app/.next/cache:size=256m,uid=1001,gid=1001
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    # Logs: at most 3 x 10 MB = 30 MB on disk.
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
