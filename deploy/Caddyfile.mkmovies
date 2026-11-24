@@ -1,0 +1,30 @@
+# BEGIN mkmovies (managed by scripts/deploy.sh)
+www.mkmovies.site {
+	encode zstd gzip
+	header -Server
+	request_body {
+		max_size 2MB
+	}
+	# Content-hashed build assets never change — let browsers and CDNs keep them for a year.
+	header /_next/static/* Cache-Control "public, max-age=31536000, immutable"
+	reverse_proxy 127.0.0.1:__APP_PORT__ {
+		transport http {
+			dial_timeout 5s
+			# AI chat responses can take a while before the first byte.
+			response_header_timeout 120s
+		}
+	}
+	log {
+		output file /var/log/caddy/mkmovies.access.log {
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 336h
+		}
+		format json
+	}
+}
+
+mkmovies.site {
+	redir https://www.mkmovies.site{uri} permanent
+}
+# END mkmovies
