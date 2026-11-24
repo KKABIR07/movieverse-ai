@@ -1,48 +1,46 @@
-import { NextRequest, NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db/mongoose';
-import { ChatMessage } from '@/lib/db/models';
-import { getSession } from '@/lib/db/auth';
+import { ChatMessage, type IChatMessage } from '@/lib/db/models';
+import { getOptionalSession, requireSession } from '@/lib/db/auth';
+import { json, readJson, readQuery, withHandler } from '@/lib/server/http';
+import { chatListQuery, chatPostSchema } from '@/lib/server/validation';
+import { toChatDTO } from '@/lib/server/dto';
 
-const USER_COLORS = [
-  '#7c3aed', '#4f46e5', '#0891b2', '#059669',
-  '#d97706', '#dc2626', '#db2777', '#7c3aed',
-];
+const USER_COLORS = ['#7c3aed', '#4f46e5', '#0891b2', '#059669', '#d97706', '#dc2626', '#db2777', '#9333ea'];
 function userColor(userId: string): string {
   let hash = 0;
-  for (const c of userId) hash = ((hash << 5) - hash) + c.charCodeAt(0);
+  for (const c of userId) hash = (hash << 5) - hash + c.charCodeAt(0);
   return USER_COLORS[Math.abs(hash) % USER_COLORS.length];
 }
 
-export async function GET(req: NextRequest) {
-  const roomId = req.nextUrl.searchParams.get('roomId') ?? 'general';
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+const PAGE = 50;
 
+/**
+ * GET /api/chat?roomId=<room>&after=<ISO datetime>  (PUBLIC, read-only for signed-out users)
+ * → { messages: ChatMessageDTO[] } — the latest ≤50 messages (newer than `after` if given), oldest → newest.
+ * `isMine` is computed for signed-in callers; user ids are never returned. Poll-friendly (no-store).
+ */
+export const GET = withHandler('chat.GET', async (req) => {
+  const { roomId, after } = readQuery(req, chatListQuery);
+  const session = await getOptionalSession(req);
   await connectDB();
-  const messages = await ChatMessage.find({ roomId })
-    .sort({ createdAt: -1 })
-    .limit(100)
-    .lean();
+  const filter: Record<string, unknown> = { roomId };
+  if (after) filter.createdAt = { $gt: new Date(after) };
+  const docs = await ChatMessage.find(filter).sort({ createdAt: -1, _id: -1 }).limit(PAGE).lean<IChatMessage[]>();
+  return json({ messages: docs.reverse().map((m) => toChatDTO(m, session?.userId)) });
+});
 
-  return NextResponse.json({ messages: messages.reverse() });
-}
-
-export async function POST(req: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const { roomId = 'general', text } = await req.json();
-  if (!text?.trim()) return NextResponse.json({ error: 'Empty message' }, { status: 400 });
-
+/** POST /api/chat  (auth) body { roomId?, text 1..500 } → 201 { message: ChatMessageDTO } */
+export const POST = withHandler('chat.POST', async (req) => {
+  const s = await requireSession(req);
+  const { roomId, text } = await readJson(req, chatPostSchema);
   await connectDB();
   const msg = await ChatMessage.create({
     roomId,
-    userId: session.userId,
-    userName: session.name,
-    userInitials: session.initials,
-    color: userColor(session.userId),
-    text: text.trim(),
+    userId: s.userId,
+    userName: s.name,
+    userInitials: s.initials,
+    color: userColor(s.userId),
+    text,
   });
-
-  return NextResponse.json({ message: msg }, { status: 201 });
-}
+  return json({ message: toChatDTO(msg.toObject() as IChatMessage, s.userId) }, { status: 201 });
+});

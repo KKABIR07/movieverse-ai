@@ -1,3 +1,9 @@
+/**
+ * Browser helpers for the YouTube shorts feature. Talks only to our own API:
+ *   GET /api/youtube/status  → { configured }   (no quota cost)
+ *   GET /api/youtube/shorts  → { items }        (server-side 24h cache)
+ */
+
 export interface YTShort {
   videoId: string;
   title: string;
@@ -12,29 +18,43 @@ export interface YTShort {
   relatedMovieDate?: string;
 }
 
-const cache = new Map<string, Pick<YTShort, 'videoId' | 'title' | 'channelTitle' | 'thumbnail'>[]>();
+export type YTShortItem = Pick<YTShort, 'videoId' | 'title' | 'channelTitle' | 'thumbnail'>;
 
-async function searchYT(
-  movieTitle: string,
-  n: number,
-): Promise<Pick<YTShort, 'videoId' | 'title' | 'channelTitle' | 'thumbnail'>[]> {
-  if (cache.has(movieTitle)) return cache.get(movieTitle)!;
+const CACHE_MAX = 200;
+const cache = new Map<string, YTShortItem[]>();
+const inflight = new Map<string, Promise<YTShortItem[]>>();
 
-  try {
-    const res = await fetch(
-      `/api/youtube/shorts?${new URLSearchParams({ q: movieTitle, n: String(n) })}`,
-    );
-    if (!res.ok) return [];
-    const { items } = (await res.json()) as {
-      items?: Pick<YTShort, 'videoId' | 'title' | 'channelTitle' | 'thumbnail'>[];
-      error?: string;
-    };
-    const result = items ?? [];
-    cache.set(movieTitle, result);
-    return result;
-  } catch {
-    return [];
-  }
+function remember(key: string, items: YTShortItem[]): void {
+  cache.delete(key);
+  while (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string);
+  cache.set(key, items);
+}
+
+async function searchYT(movieTitle: string, n: number, type: 'shorts' | 'videos' = 'shorts'): Promise<YTShortItem[]> {
+  const q = movieTitle.trim().slice(0, 100);
+  if (!q) return [];
+  const key = `${type}::${q.toLowerCase()}::${n}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
+  const pending = inflight.get(key);
+  if (pending) return pending;
+
+  const p = (async () => {
+    try {
+      const res = await fetch(`/api/youtube/shorts?${new URLSearchParams({ q, n: String(n), type })}`);
+      if (!res.ok) return [];
+      const { items } = (await res.json()) as { items?: YTShortItem[] };
+      const result = items ?? [];
+      remember(key, result);
+      return result;
+    } catch {
+      return [];
+    } finally {
+      inflight.delete(key);
+    }
+  })();
+  inflight.set(key, p);
+  return p;
 }
 
 export async function fetchMovieShorts(
@@ -47,8 +67,9 @@ export async function fetchMovieShorts(
     date?: string;
   },
   n = 3,
+  type: 'shorts' | 'videos' = 'shorts',
 ): Promise<YTShort[]> {
-  const items = await searchYT(movie.title, n);
+  const items = await searchYT(movie.title, n, type);
   return items.map((item) => ({
     ...item,
     relatedMovie: movie.title,
@@ -60,13 +81,20 @@ export async function fetchMovieShorts(
   }));
 }
 
-/** Returns true if YOUTUBE_API_KEY is configured (detected via API response) */
+let statusPromise: Promise<boolean> | null = null;
+
+/** True if YOUTUBE_API_KEY is configured on the server. Does not spend YouTube quota. */
 export async function checkYouTubeKey(): Promise<boolean> {
-  try {
-    const res = await fetch('/api/youtube/shorts?q=test&n=1');
-    if (res.status === 503) return false;
-    return res.ok;
-  } catch {
-    return false;
-  }
+  statusPromise ??= (async () => {
+    try {
+      const res = await fetch('/api/youtube/status');
+      if (!res.ok) return false;
+      const { configured } = (await res.json()) as { configured?: boolean };
+      return configured === true;
+    } catch {
+      statusPromise = null; // allow retry after a network error
+      return false;
+    }
+  })();
+  return statusPromise;
 }
