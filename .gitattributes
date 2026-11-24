@@ -1,0 +1,8 @@
+# Files shipped to the Linux box via `git archive` must keep LF endings even when
+# core.autocrlf=true on Windows (CRLF breaks bash, .env parsing and Caddyfile blocks).
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+docker-compose.yml text eol=lf
+.dockerignore   text eol=lf
+.env.example    text eol=lf
+deploy/**       text eol=lf

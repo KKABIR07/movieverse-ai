@@ -1,0 +1,48 @@
+# BEGIN mkmovies (managed by scripts/deploy.sh)
+# Served through Cloudflare (orange cloud, SSL "Full (strict)"). TLS uses the Cloudflare Origin
+# Certificate installed by scripts/install-origin-cert.sh — no Let's Encrypt for these names.
+# The origin is locked to Cloudflare edge IPs at SITE scope only (global options and ufw are
+# untouched: other tenants on this box are not behind Cloudflare). __CF_SNIPPET__ defines @notcf.
+www.mkmovies.site {
+	tls /etc/caddy/certs/mkmovies.site.pem /etc/caddy/certs/mkmovies.site.key
+	import __CF_SNIPPET__
+	encode zstd gzip
+	header -Server
+	request_body {
+		max_size 2MB
+	}
+	# Content-hashed build assets never change — browsers and Cloudflare may keep them for a year.
+	header /_next/static/* Cache-Control "public, max-age=31536000, immutable"
+	# `route` keeps the literal order: drop non-Cloudflare peers before anything is proxied.
+	route {
+		abort @notcf
+		reverse_proxy 127.0.0.1:__APP_PORT__ {
+			# Real client IP from Cloudflare. Safe to trust only because of the @notcf lock above.
+			header_up X-Real-IP {http.request.header.CF-Connecting-IP}
+			header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+			transport http {
+				dial_timeout 5s
+				# AI chat responses can take a while before the first byte.
+				response_header_timeout 120s
+			}
+		}
+	}
+	log {
+		output file /var/log/caddy/mkmovies.access.log {
+			roll_size 10MiB
+			roll_keep 5
+			roll_keep_for 336h
+		}
+		format json
+	}
+}
+
+mkmovies.site {
+	tls /etc/caddy/certs/mkmovies.site.pem /etc/caddy/certs/mkmovies.site.key
+	import __CF_SNIPPET__
+	route {
+		abort @notcf
+		redir https://www.mkmovies.site{uri} permanent
+	}
+}
+# END mkmovies
