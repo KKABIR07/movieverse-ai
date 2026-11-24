@@ -63,7 +63,7 @@ describe('tmdbFetch', () => {
 
   it('retries once on network error, then throws TmdbError(0)', async () => {
     fetchMock.mockRejectedValue(new TypeError('fetch failed'));
-    const err = await tmdbFetch('movie/popular').catch((e) => e);
+    const err = (await tmdbFetch('movie/popular').catch((e: unknown) => e)) as TmdbError;
     expect(err).toBeInstanceOf(TmdbError);
     expect(err.status).toBe(0);
     expect(err.retryable).toBe(true);
