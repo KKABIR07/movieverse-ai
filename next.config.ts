@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type { NextConfig } from 'next';
 
 // Content-Security-Policy. Next's App Router injects inline bootstrap scripts and styles, so
@@ -32,6 +33,9 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // Self-contained server bundle for the Docker image (see Dockerfile).
   output: 'standalone',
+  // Pin tracing to this folder so server.js always lands at .next/standalone/server.js, even when
+  // a parent directory has its own lockfile (e.g. git worktrees nested inside the main checkout).
+  outputFileTracingRoot: path.join(__dirname),
   poweredByHeader: false,
 
   images: {
