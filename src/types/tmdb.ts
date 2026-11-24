@@ -28,6 +28,11 @@ export interface Movie {
   'watch/providers'?: WatchProviders;
   keywords?: { keywords: Keyword[] };
   images?: MovieImages;
+  imdb_id?: string | null;
+  homepage?: string | null;
+  belongs_to_collection?: { id: number; name: string; poster_path: string | null; backdrop_path: string | null } | null;
+  /** present on trending/search results */
+  media_type?: 'movie';
 }
 
 export interface TVShow {
@@ -51,6 +56,31 @@ export interface TVShow {
   credits?: Credits;
   similar?: PaginatedResponse<TVShow>;
   recommendations?: PaginatedResponse<TVShow>;
+  'watch/providers'?: WatchProviders;
+  original_language?: string;
+  origin_country?: string[];
+  episode_run_time?: number[];
+  last_air_date?: string | null;
+  in_production?: boolean;
+  homepage?: string | null;
+  created_by?: { id: number; name: string; profile_path: string | null }[];
+  networks?: { id: number; name: string; logo_path: string | null; origin_country: string }[];
+  seasons?: TVSeasonSummary[];
+  spoken_languages?: Language[];
+  production_companies?: ProductionCompany[];
+  /** present on trending/search results */
+  media_type?: 'tv';
+}
+
+export interface TVSeasonSummary {
+  id: number;
+  name: string;
+  season_number: number;
+  episode_count: number;
+  air_date: string | null;
+  poster_path: string | null;
+  overview: string;
+  vote_average?: number;
 }
 
 export interface Genre {
@@ -113,7 +143,22 @@ export interface Person {
   known_for_department: string;
   popularity: number;
   known_for?: KnownForItem[];
-  combined_credits?: { cast: (Movie & { character: string; media_type: string })[]; crew: Crew[] };
+  combined_credits?: {
+    cast: (Omit<Movie, 'media_type'> & { name?: string; first_air_date?: string; character: string; media_type: string })[];
+    crew: (Crew & {
+      media_type?: string;
+      title?: string;
+      name?: string;
+      poster_path?: string | null;
+      release_date?: string;
+      first_air_date?: string;
+    })[];
+  };
+  also_known_as?: string[];
+  imdb_id?: string | null;
+  homepage?: string | null;
+  gender?: number;
+  images?: { profiles: Image[] };
 }
 
 export interface FollowedPerson {
