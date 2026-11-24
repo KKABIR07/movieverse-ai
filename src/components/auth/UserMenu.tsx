@@ -1,157 +1,166 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { LogOut, Bookmark, User, ChevronDown, MessageSquare, Star, Users, Rss, MonitorPlay } from 'lucide-react';
 import Link from 'next/link';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { Bookmark, LogOut, MessageSquare, Rss, Star, User, Users } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useChatStore } from '@/store/chatStore';
 import { useFollowingStore } from '@/store/followingStore';
+import { Button } from '@/components/ui/Button';
+import { cn } from '@/components/ui/cn';
 
 interface UserMenuProps {
+  /** Called by the signed-out state's "Sign in" button. */
   onLoginClick: () => void;
 }
 
+const itemClass =
+  'flex w-full min-h-11 items-center gap-3 rounded-chip px-3 text-left text-caption text-fg-secondary outline-none ' +
+  'hover:bg-surface-3 hover:text-fg focus-visible:bg-surface-3 focus-visible:text-fg';
+
+/**
+ * Avatar button + account menu (ARIA menu button pattern: Enter/Space/↓ open,
+ * ↑ ↓ Home End move, Esc closes and returns focus). Renders a "Sign in" button
+ * when signed out.
+ */
 export function UserMenu({ onLoginClick }: UserMenuProps) {
-  const { user, logout } = useAuthStore();
-  const { toggleChat } = useChatStore();
-  const { following } = useFollowingStore();
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
+  const setChatOpen = useChatStore((s) => s.setChatOpen);
+  const followingCount = useFollowingStore((s) => s.following.length);
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
+    document.addEventListener('mousedown', onDown);
+    const raf = requestAnimationFrame(() => menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus());
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      cancelAnimationFrame(raf);
+    };
+  }, [open]);
 
   if (!user) {
     return (
-      <button
-        onClick={onLoginClick}
-        className="px-3 py-1.5 rounded-lg bg-[var(--accent-primary)] hover:bg-[var(--accent-secondary)] text-white text-sm font-semibold transition-colors"
-      >
-        Sign In
-      </button>
+      <Button size="sm" onClick={onLoginClick} className="h-10">
+        Sign in
+      </Button>
     );
   }
 
-  const close = () => setOpen(false);
+  const close = (returnFocus = true) => {
+    setOpen(false);
+    if (returnFocus) buttonRef.current?.focus();
+  };
+
+  const onMenuKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? []);
+    const idx = items.indexOf(document.activeElement as HTMLElement);
+    let next = -1;
+    if (e.key === 'ArrowDown') next = (idx + 1) % items.length;
+    else if (e.key === 'ArrowUp') next = (idx - 1 + items.length) % items.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = items.length - 1;
+    else if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+      return;
+    } else if (e.key === 'Tab') {
+      setOpen(false);
+      return;
+    }
+    if (next >= 0) {
+      e.preventDefault();
+      items[next]?.focus();
+    }
+  };
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={wrapRef} className="relative ml-1">
       <button
+        ref={buttonRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        aria-label={`Account menu for ${user.name}`}
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 p-1 rounded-xl hover:bg-[var(--bg-hover)] transition-colors"
-        aria-label="User menu"
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className="grid size-11 place-items-center rounded-full"
       >
-        <div
-          className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-          style={{ background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))' }}
-        >
+        <span className="grid size-9 place-items-center rounded-full bg-surface-3 text-caption font-semibold text-fg ring-1 ring-line-strong">
           {user.initials}
-        </div>
-        <ChevronDown
-          size={14}
-          className={`text-[var(--text-muted)] transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
-        />
+        </span>
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-56 glass rounded-xl border border-[var(--border)] shadow-[0_16px_48px_rgba(0,0,0,0.6)] overflow-hidden z-50">
-
-          {/* User info */}
-          <div className="px-4 py-3 border-b border-[var(--border)]">
-            <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{user.name}</p>
-            <p className="text-xs text-[var(--text-muted)] truncate">{user.email}</p>
+        <div
+          ref={menuRef}
+          id={menuId}
+          role="menu"
+          aria-label="Account"
+          onKeyDown={onMenuKey}
+          className="absolute right-0 top-full z-50 mt-2 w-64 rounded-card border border-line bg-surface-2 p-1.5 shadow-pop animate-rise-in"
+        >
+          <div className="px-3 py-2.5" role="none">
+            <p className="truncate text-caption font-semibold text-fg">{user.name}</p>
+            <p className="truncate text-micro text-fg-muted">{user.email}</p>
           </div>
-
-          {/* Stars · Following · Feed */}
-          <div className="px-3 py-2.5 border-b border-[var(--border)]">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-2 px-1">Discover</p>
-            <div className="flex gap-1.5">
-              <Link
-                href="/stars"
-                onClick={close}
-                className="flex-1 flex flex-col items-center gap-1 py-2 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--accent-primary)]/15 hover:border-[var(--accent-primary)]/30 border border-transparent transition-all group"
-              >
-                <Star size={15} className="text-amber-400 group-hover:text-amber-300 transition-colors" />
-                <span className="text-[10px] font-semibold text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors">Stars</span>
-              </Link>
-              <Link
-                href="/following"
-                onClick={close}
-                className="flex-1 flex flex-col items-center gap-1 py-2 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--accent-primary)]/15 hover:border-[var(--accent-primary)]/30 border border-transparent transition-all group relative"
-              >
-                <Users size={15} className="text-violet-400 group-hover:text-violet-300 transition-colors" />
-                <span className="text-[10px] font-semibold text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors">Following</span>
-                {following.length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[var(--accent-primary)] text-[9px] font-black text-white flex items-center justify-center">
-                    {following.length > 9 ? '9+' : following.length}
-                  </span>
-                )}
-              </Link>
-              <Link
-                href="/feed"
-                onClick={close}
-                className="flex-1 flex flex-col items-center gap-1 py-2 rounded-xl bg-[var(--bg-secondary)] hover:bg-[var(--accent-primary)]/15 hover:border-[var(--accent-primary)]/30 border border-transparent transition-all group"
-              >
-                <Rss size={15} className="text-green-400 group-hover:text-green-300 transition-colors" />
-                <span className="text-[10px] font-semibold text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors">Feed</span>
-              </Link>
-            </div>
-          </div>
-
-          {/* Standard nav */}
-          <div className="py-1">
-            <Link
-              href="/watchlist"
-              onClick={close}
-              className="flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
-            >
-              <Bookmark size={15} />
-              My Watchlist
-            </Link>
-            <Link
-              href="/profile"
-              onClick={close}
-              className="flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
-            >
-              <User size={15} />
-              Profile
-            </Link>
-            <Link
-              href="/shorts"
-              onClick={close}
-              className="flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-red-500/10 hover:text-red-400 transition-colors group"
-            >
-              <MonitorPlay size={15} className="text-red-500 group-hover:text-red-400" />
-              Movie Shorts
-            </Link>
-          </div>
-
-          {/* Chat */}
-          <div className="border-t border-[var(--border)] py-1">
-            <button
-              onClick={() => { toggleChat(); close(); }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-[var(--text-secondary)] hover:text-white hover:bg-[var(--accent-primary)]/20 transition-colors text-left group"
-            >
-              <MessageSquare size={15} className="text-violet-400 group-hover:text-violet-300 transition-colors" />
-              Open Chat
-            </button>
-          </div>
-
-          {/* Sign out */}
-          <div className="border-t border-[var(--border)] py-1">
-            <button
-              onClick={async () => { await logout(); close(); }}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors text-left"
-            >
-              <LogOut size={15} />
-              Sign Out
-            </button>
-          </div>
+          <div className="my-1 h-px bg-line" role="separator" />
+          <Link role="menuitem" tabIndex={-1} href="/watchlist" onClick={() => close(false)} className={itemClass}>
+            <Bookmark aria-hidden className="size-4" /> Watchlist
+          </Link>
+          <Link role="menuitem" tabIndex={-1} href="/profile" onClick={() => close(false)} className={itemClass}>
+            <User aria-hidden className="size-4" /> Profile
+          </Link>
+          <Link role="menuitem" tabIndex={-1} href="/following" onClick={() => close(false)} className={itemClass}>
+            <Users aria-hidden className="size-4" />
+            <span className="flex-1">Following</span>
+            {followingCount > 0 && <span className="tabular text-micro text-fg-muted">{followingCount}</span>}
+          </Link>
+          <Link role="menuitem" tabIndex={-1} href="/feed" onClick={() => close(false)} className={itemClass}>
+            <Rss aria-hidden className="size-4" /> Feed
+          </Link>
+          <Link role="menuitem" tabIndex={-1} href="/stars" onClick={() => close(false)} className={itemClass}>
+            <Star aria-hidden className="size-4" /> People
+          </Link>
+          <button
+            role="menuitem"
+            tabIndex={-1}
+            type="button"
+            onClick={() => {
+              setChatOpen(true);
+              close(false);
+            }}
+            className={itemClass}
+          >
+            <MessageSquare aria-hidden className="size-4" /> Community chat
+          </button>
+          <div className="my-1 h-px bg-line" role="separator" />
+          <button
+            role="menuitem"
+            tabIndex={-1}
+            type="button"
+            onClick={async () => {
+              close(false);
+              await logout();
+            }}
+            className={cn(itemClass, 'text-danger hover:text-danger focus-visible:text-danger')}
+          >
+            <LogOut aria-hidden className="size-4" /> Sign out
+          </button>
         </div>
       )}
     </div>

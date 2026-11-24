@@ -258,7 +258,7 @@ export function Sidebar() {
                   />
                 </div>
                 {yearFrom && yearTo && parseInt(yearFrom) > parseInt(yearTo) && (
-                  <p className="text-[10px] text-red-400 mt-1 px-1">"From" year must be ≤ "To" year</p>
+                  <p className="text-micro text-danger mt-1 px-1">&ldquo;From&rdquo; year must be ≤ &ldquo;To&rdquo; year</p>
                 )}
               </section>
 
