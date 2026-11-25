@@ -360,7 +360,11 @@ sudo install -d -o root -g root -m 755 "$(dirname "$CF_SNIPPET")"
 sudo install -o root -g root -m 644 /tmp/mkmovies-cf-ips.caddy "$CF_SNIPPET" && rm -f /tmp/mkmovies-cf-ips.caddy
 sudo sed -i '/^# BEGIN mkmovies/,/^# END mkmovies/d' "$CF"
 sudo tee -a "$CF" </tmp/mkmovies.caddy >/dev/null && rm -f /tmp/mkmovies.caddy
-if ! sudo caddy validate --config "$CF" --adapter caddyfile >/dev/null 2>/tmp/mkmovies-caddy-validate.log; then
+# Validate AS the caddy user: validation opens log writers, and a root-run validate would create
+# logs/caddy-access.log root-owned, which the caddy-run reload then cannot open (seen 2026-11-25).
+# Also repair a log file left root-owned by an earlier run.
+sudo find "$APP_DIR/logs" -maxdepth 1 -type f ! -user caddy -exec chown caddy:caddy {} +
+if ! sudo -u caddy caddy validate --config "$CF" --adapter caddyfile >/dev/null 2>/tmp/mkmovies-caddy-validate.log; then
   echo "caddy validate FAILED — restoring $BAK" >&2
   tail -5 /tmp/mkmovies-caddy-validate.log >&2
   restore

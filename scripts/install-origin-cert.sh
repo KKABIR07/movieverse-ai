@@ -63,7 +63,8 @@ sudo install -o root -g caddy -m 640 "$NK" "$K"
 restore() {
   if [ "$had_old" = 1 ]; then sudo cp -p "$C.bak-$STAMP" "$C"; sudo cp -p "$K.bak-$STAMP" "$K"; fi
 }
-if ! sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>/tmp/mkmovies-cert-validate.log; then
+# As the caddy user (like the live server): a root validate can leave root-owned log files behind.
+if ! sudo -u caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null 2>/tmp/mkmovies-cert-validate.log; then
   echo "caddy validate FAILED with the new certificate — restoring previous files" >&2
   tail -5 /tmp/mkmovies-cert-validate.log >&2
   restore
