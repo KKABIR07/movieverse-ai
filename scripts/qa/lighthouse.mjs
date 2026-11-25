@@ -61,8 +61,13 @@ async function chromePath() {
   return null;
 }
 
+/** Quote one argument for cmd.exe (paths with spaces, --chrome-flags="a b", | & < > …). */
+function quoteForCmd(a) {
+  return /[\s|&<>^()"%]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a;
+}
+
 function run(cmd, args, env = {}) {
-  return spawnSync(cmd, args, {
+  return spawnSync(cmd, isWin ? args.map(quoteForCmd) : args, {
     stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf8',
     shell: isWin, // npx is a .cmd shim on Windows

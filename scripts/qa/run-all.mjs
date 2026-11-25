@@ -45,11 +45,20 @@ if (dnsShim && !existsSync(dnsShim)) {
   process.exit(2);
 }
 
+/** Quote one argument for cmd.exe when it contains spaces or shell metacharacters. */
+function quoteForCmd(a) {
+  return /[\s|&<>^()"%]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a;
+}
+
 const results = [];
 function step(name, cmd, args, env = {}) {
   console.log(`\n━━ qa: ${name} ━━ ${cmd} ${args.join(' ')}`);
   const t0 = Date.now();
-  const r = spawnSync(cmd, args, { stdio: 'inherit', shell: isWin, env: { ...process.env, ...env } });
+  // Only the npx .cmd shim needs a shell on Windows (node itself must not go through one: "C:\Program Files").
+  // With a shell, cmd.exe would treat | & < > in args (e.g. --grep "@smoke|@perf") as operators → quote them.
+  const useShell = isWin && cmd === npx;
+  const finalArgs = useShell ? args.map(quoteForCmd) : args;
+  const r = spawnSync(cmd, finalArgs, { stdio: 'inherit', shell: useShell, env: { ...process.env, ...env } });
   const ok = r.status === 0;
   results.push({ name, ok, sec: Math.round((Date.now() - t0) / 1000), code: r.status });
   if (!ok && !keepGoing) finish();
@@ -81,6 +90,24 @@ process.on('SIGINT', () => {
   stopServer();
   process.exit(130);
 });
+
+/**
+ * PID of the process LISTENING on `p` (the real node server, not the npx/cmd wrapper we spawned).
+ * Windows: netstat -ano · Linux/macOS: lsof. Null when it can't be determined.
+ */
+function listeningPid(p) {
+  try {
+    if (isWin) {
+      const out = spawnSync('netstat', ['-ano', '-p', 'TCP'], { encoding: 'utf8' }).stdout ?? '';
+      const line = out.split(/\r?\n/).find((l) => /LISTENING/i.test(l) && new RegExp(`[:.]${p}\\s`).test(l));
+      return line ? Number(line.trim().split(/\s+/).pop()) || null : null;
+    }
+    const out = spawnSync('lsof', ['-t', `-iTCP:${p}`, '-sTCP:LISTEN'], { encoding: 'utf8' }).stdout ?? '';
+    return Number(out.trim().split(/\s+/)[0]) || null;
+  } catch {
+    return null;
+  }
+}
 
 async function waitForHealth(url, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
@@ -140,7 +167,7 @@ step(`playwright${grep ? ` (${grep})` : ''}`, npx, pwArgs, { E2E_BASE_URL: baseU
 
 if (flag('lighthouse')) step('lighthouse', process.execPath, [path.join('scripts', 'qa', 'lighthouse.mjs'), baseUrl]);
 if (soakSec) {
-  const extra = server && !isWin ? ['--pid', String(server.pid)] : [];
+  const extra = server ? ['--pid', String(listeningPid(port) ?? server.pid)] : [];
   step('memory soak', process.execPath, [path.join('scripts', 'qa', 'memory-soak.mjs'), baseUrl, '--duration', String(soakSec), ...extra]);
 }
 finish();
