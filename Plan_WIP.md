@@ -5,6 +5,9 @@
 > only in Pages B files (old movie/tv detail, watchlist, share). NOW RUNNING in parallel: Pages B agent
 > (worktree a0a44707…, merges the feature branch first) + QA agent (worktree a9c282ba…, owns package.json scripts).
 > Next: merge both → integrator step 2 (remove legacy components + three deps) → step 3 onwards below.
+> UPDATE: Pages B MERGED (e83af9d, 417 tests, lint 0/0). Step 2 DONE (7e5350a: legacy comps + three deps gone, no-secrets
+> build OK). Blog stale claims fixed (16c1324). Waiting on QA agent → merge → full e2e + screenshots → user approval.
+> Known: /person|movie|tv/<bad id> = 200 + noindex (loading.tsx streams first), not a hard 404.
 >
 > **PAUSED 2026-11-25 by user ("stop we will pickup tomorrow"). RESUME HERE:**
 > `feature/oci-redesign` @ 689abe0 = MERGED: infra, backend, foundation, Postgres port (Drizzle), infra v2
