@@ -1,169 +1,165 @@
-'use client';
+import type { Metadata } from 'next';
+import { connection } from 'next/server';
+import {
+  getGenres,
+  getMovieList,
+  getTrending,
+  getTrendingPeople,
+  getTvList,
+} from '@/lib/tmdb/server';
+import type { Genre } from '@/types/tmdb';
+import { MediaCard, PersonCard, POSTER_SIZES, Rail, Top10Rail } from '@/components/media';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { formatYear } from '@/lib/format';
+import { HeroCarousel, type HeroSlide } from '@/components/home/HeroCarousel';
+import { FilterLinks } from '@/components/browse/FilterLinks';
+import { GenreTiles } from '@/components/browse/GenreTiles';
+import { load } from '@/components/browse/BrowseStates';
+import { pick, type RawParams } from '@/components/browse/params';
+import { toPeople, toSummaries } from '@/components/browse/trim';
+import type { MediaSummary } from '@/components/media/types';
 
-import { useQuery } from '@tanstack/react-query';
-import { tmdb, TMDB_KEY_MISSING } from '@/lib/tmdb';
-import { HeroBanner } from '@/components/movie/HeroBanner';
-import { HorizontalScroll } from '@/components/movie/HorizontalScroll';
-import { TrendingShowcase } from '@/components/movie/TrendingShowcase';
-import { GenreSection } from '@/components/movie/GenreSection';
-import { PeopleShowcase } from '@/components/people/PeopleShowcase';
-import { FollowingShelf } from '@/components/people/FollowingShelf';
-import { Skeleton } from '@/components/ui/Skeleton';
-import { KeyRound } from 'lucide-react';
+export const metadata: Metadata = {
+  title: { absolute: 'mkmovies: discover movies & TV shows' },
+  description:
+    'What is trending this week, the top 10 movies today, new releases and the best-rated films and series. Ratings from TMDB.',
+  alternates: { canonical: '/' },
+};
 
-export default function HomePage() {
-  const { data: trending, isLoading: loadingTrending } = useQuery({
-    queryKey: ['trending', 'movie', 'week'],
-    queryFn: () => tmdb.movie.trending('week'),
-    enabled: !TMDB_KEY_MISSING,
-    retry: false,
-  });
+const PERIODS = ['day', 'week'] as const;
+type Period = (typeof PERIODS)[number];
 
-  const { data: popular } = useQuery({
-    queryKey: ['movies', 'popular'],
-    queryFn: () => tmdb.movie.popular(),
-    enabled: !TMDB_KEY_MISSING,
-    retry: false,
-  });
+function PosterRail({ title, href, items }: { title: string; href?: string; items: MediaSummary[] }) {
+  if (!items.length) return null;
+  return (
+    <Rail title={title} href={href}>
+      {items.map((m) => (
+        <MediaCard key={`${m.mediaType}:${m.id}`} item={m} sizes={POSTER_SIZES.rail} />
+      ))}
+    </Rail>
+  );
+}
 
-  const { data: topRated } = useQuery({
-    queryKey: ['movies', 'top_rated'],
-    queryFn: () => tmdb.movie.topRated(),
-    enabled: !TMDB_KEY_MISSING,
-    retry: false,
-  });
+export default async function HomePage({ searchParams }: { searchParams: Promise<RawParams> }) {
+  await connection(); // request-time render: the build never calls TMDB
+  const sp = await searchParams;
+  const period: Period = pick(sp.trending, PERIODS, 'week');
 
-  const { data: nowPlaying } = useQuery({
-    queryKey: ['movies', 'now_playing'],
-    queryFn: () => tmdb.movie.nowPlaying(),
-    enabled: !TMDB_KEY_MISSING,
-    retry: false,
-  });
+  const [heroRes, trendingRes, top10Res, popularRes, popularTvRes, nowRes, upcomingRes, topRatedRes, peopleRes, movieGenresRes, tvGenresRes] =
+    await Promise.all([
+      load('trending/all/week', getTrending('all', 'week')),
+      period === 'week' ? null : load('trending/all/day', getTrending('all', 'day')),
+      load('trending/movie/day', getTrending('movie', 'day')),
+      load('movie/popular', getMovieList('popular')),
+      load('tv/popular', getTvList('popular')),
+      load('movie/now_playing', getMovieList('now_playing')),
+      load('movie/upcoming', getMovieList('upcoming')),
+      load('movie/top_rated', getMovieList('top_rated')),
+      load('trending/person/week', getTrendingPeople('week')),
+      load('genre/movie', getGenres('movie')),
+      load('genre/tv', getGenres('tv')),
+    ]);
 
-  const { data: trendingTV } = useQuery({
-    queryKey: ['trending', 'tv', 'week'],
-    queryFn: () => tmdb.tv.trending('week'),
-    enabled: !TMDB_KEY_MISSING,
-    retry: false,
-  });
+  const weekly = heroRes.ok ? toSummaries(heroRes.data.results) : [];
+  const trending = period === 'week' ? weekly : trendingRes?.ok ? toSummaries(trendingRes.data.results) : [];
 
-  const { data: upcoming } = useQuery({
-    queryKey: ['movies', 'upcoming'],
-    queryFn: () => tmdb.movie.upcoming(),
-    enabled: !TMDB_KEY_MISSING,
-    retry: false,
-  });
-
-  const { data: trendingPeople1 } = useQuery({
-    queryKey: ['trending', 'people', 'week', 1],
-    queryFn: () => tmdb.person.trending('week', 1),
-    enabled: !TMDB_KEY_MISSING,
-    retry: false,
-  });
-
-  const { data: trendingPeople2 } = useQuery({
-    queryKey: ['trending', 'people', 'week', 2],
-    queryFn: () => tmdb.person.trending('week', 2),
-    enabled: !TMDB_KEY_MISSING && !!(trendingPeople1),
-    retry: false,
-  });
-
-  const { data: trendingPeople3 } = useQuery({
-    queryKey: ['trending', 'people', 'week', 3],
-    queryFn: () => tmdb.person.trending('week', 3),
-    enabled: !TMDB_KEY_MISSING && !!(trendingPeople2),
-    retry: false,
-  });
-
-  const trendingPeople50 = [
-    ...(trendingPeople1?.results ?? []),
-    ...(trendingPeople2?.results ?? []),
-    ...(trendingPeople3?.results ?? []),
-  ].slice(0, 50);
-
-  const heroMovies = trending?.results?.slice(0, 8) ?? [];
-
-  if (TMDB_KEY_MISSING) {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="max-w-md text-center space-y-5">
-          <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto">
-            <KeyRound size={32} className="text-amber-400" />
-          </div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Add your TMDB API key</h1>
-          <p className="text-[var(--text-secondary)] leading-relaxed">
-            mkmovies needs a free TMDB API key to fetch movie data. It takes about 2 minutes to set up.
-          </p>
-          <div className="glass rounded-xl p-4 text-left space-y-3">
-            <p className="text-sm font-medium text-[var(--text-primary)]">Quick setup:</p>
-            <ol className="space-y-2 text-sm text-[var(--text-secondary)]">
-              <li>1. Go to <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer" className="text-[var(--accent-primary)] hover:underline">themoviedb.org/settings/api</a> and create a free account</li>
-              <li>2. Request an API key (choose "Developer")</li>
-              <li>
-                3. Open <code className="bg-[var(--bg-hover)] px-1.5 py-0.5 rounded text-xs">movieverse/.env.local</code> and set:
-                <pre className="mt-1.5 bg-[var(--bg-secondary)] rounded-lg p-3 text-xs text-amber-300 overflow-auto">
-{`NEXT_PUBLIC_TMDB_API_KEY=your_actual_key`}
-                </pre>
-              </li>
-              <li>4. Save the file and restart the dev server</li>
-            </ol>
-          </div>
-        </div>
-      </div>
-    );
+  const genreNames = new Map<number, string>();
+  for (const g of [...(movieGenresRes.ok ? movieGenresRes.data : []), ...(tvGenresRes.ok ? tvGenresRes.data : [])]) {
+    if (!genreNames.has(g.id)) genreNames.set(g.id, g.name);
   }
 
+  // Hero keeps the overview (cards drop it), so map from the raw results.
+  const heroSlides: HeroSlide[] = heroRes.ok
+    ? heroRes.data.results
+        .filter((r) => r.media_type !== 'person' && (r as { backdrop_path?: string | null }).backdrop_path)
+        .slice(0, 5)
+        .map((r) => {
+          const [base] = toSummaries([r]);
+          const raw = r as { overview?: string; genre_ids?: number[] };
+          return {
+            ...base,
+            overview: raw.overview ?? '',
+            year: formatYear(base.date, ''),
+            genreNames: (raw.genre_ids ?? []).map((id) => genreNames.get(id)).filter((n): n is string => !!n),
+          };
+        })
+    : [];
+
+  const movieGenres: Genre[] = movieGenresRes.ok ? movieGenresRes.data : [];
+  const people = peopleRes.ok ? toPeople(peopleRes.data.results).filter((p) => p.profile_path).slice(0, 20) : [];
+
   return (
-    <div className="min-h-screen">
-      {loadingTrending ? (
-        <div className="h-[100svh] min-h-[600px]">
-          <Skeleton className="h-full w-full" rounded="rounded-none" />
+    <div className="pb-16">
+      <h1 className="sr-only">mkmovies: trending movies and TV shows</h1>
+
+      {heroSlides.length > 0 ? (
+        <HeroCarousel slides={heroSlides} />
+      ) : (
+        <div className="px-gutter pt-10">
+          <SectionHeader as="h2" title="Trending this week" description="Live data from TMDB is unavailable right now. Try again shortly." />
         </div>
-      ) : heroMovies.length > 0 ? (
-        <HeroBanner movies={heroMovies} />
-      ) : null}
+      )}
 
-      <div className="-mt-20 relative z-10">
-        <TrendingShowcase
-          items={trending?.results ?? []}
-          loading={loadingTrending}
-        />
-
-        {/* Trending Stars spotlight — up to 50 */}
-        {trendingPeople50.length > 0 && (
-          <PeopleShowcase people={trendingPeople50} />
+      <div className="mt-10 flex flex-col gap-12 md:mt-14 md:gap-14">
+        {trending.length > 0 && (
+          <div id="trending" className="scroll-mt-24">
+            <Rail
+              title="Trending"
+              href={`/trending?window=${period}`}
+              actions={
+                <FilterLinks
+                  label="Trending period"
+                  value={period}
+                  size="sm"
+                  scrollable={false}
+                  keepScroll
+                  options={[
+                    { value: 'day', label: 'Today', href: '/?trending=day' },
+                    {
+                      value: 'week',
+                      label: (
+                        <>
+                          <span className="sm:hidden">Week</span>
+                          <span className="max-sm:hidden">This week</span>
+                        </>
+                      ),
+                      href: '/',
+                    },
+                  ]}
+                />
+              }
+            >
+              {trending.map((m) => (
+                <MediaCard key={`${m.mediaType}:${m.id}`} item={m} sizes={POSTER_SIZES.rail} />
+              ))}
+            </Rail>
+          </div>
         )}
 
-        {/* Followed people shelf (only shown when logged in + has follows) */}
-        <FollowingShelf />
+        {top10Res.ok && top10Res.data.results.length > 0 && (
+          <Top10Rail title="Top 10 movies today" href="/trending?type=movie&window=day" items={toSummaries(top10Res.data.results, 'movie')} mediaType="movie" />
+        )}
 
-        <HorizontalScroll
-          title="🎬 Now Playing"
-          items={nowPlaying?.results ?? []}
-          viewAllHref="/movies"
-        />
-        <GenreSection />
-        <HorizontalScroll
-          title="⭐ Top Rated Movies"
-          items={topRated?.results ?? []}
-          viewAllHref="/top-rated"
-        />
-        <HorizontalScroll
-          title="📺 Trending TV Shows"
-          items={trendingTV?.results ?? []}
-          mediaType="tv"
-          viewAllHref="/tv"
-        />
-        <HorizontalScroll
-          title="🎟️ Upcoming Releases"
-          items={upcoming?.results ?? []}
-          viewAllHref="/movies"
-        />
-        <HorizontalScroll
-          title="🌟 Popular Right Now"
-          items={popular?.results ?? []}
-          viewAllHref="/movies"
-        />
+        <PosterRail title="Popular movies" href="/movies" items={popularRes.ok ? toSummaries(popularRes.data.results, 'movie') : []} />
+        <PosterRail title="Popular TV" href="/tv" items={popularTvRes.ok ? toSummaries(popularTvRes.data.results, 'tv') : []} />
+        <PosterRail title="Now playing" href="/movies?list=now_playing" items={nowRes.ok ? toSummaries(nowRes.data.results, 'movie') : []} />
+        <PosterRail title="Coming soon" href="/movies?list=upcoming" items={upcomingRes.ok ? toSummaries(upcomingRes.data.results, 'movie') : []} />
+        <PosterRail title="Top rated movies" href="/top-rated" items={topRatedRes.ok ? toSummaries(topRatedRes.data.results, 'movie') : []} />
+
+        {people.length > 0 && (
+          <Rail title="Trending people" href="/stars?list=trending" variant="person">
+            {people.map((p) => (
+              <PersonCard key={p.id} person={p} />
+            ))}
+          </Rail>
+        )}
+
+        {movieGenres.length > 0 && (
+          <section aria-labelledby="genres-heading" className="px-gutter">
+            <SectionHeader id="genres-heading" title="Browse by genre" href="/discover" seeAllLabel="Discover" />
+            <GenreTiles genres={movieGenres} />
+          </section>
+        )}
       </div>
     </div>
   );
