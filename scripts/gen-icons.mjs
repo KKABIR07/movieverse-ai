@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Regenerate the favicon / app-icon set from the brand mark (the original mkmovies "mk" film-strip icon).
+ * Regenerate the favicon / app-icon set from the brand mark ("Noir & Gold": ink tile, gold frame, gold play glyph).
  *
  *   node scripts/gen-icons.mjs
  *
@@ -18,23 +18,22 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const FONT = "'Arial Black','Helvetica Neue',Arial,sans-serif";
-
-/** The mark on a 32-unit grid (same geometry as the original 32×32 icon). `bleed` = square, edge-to-edge background. */
+/**
+ * "Noir & Gold" mark on a 64-unit grid — same geometry as <LogoMark> in src/components/layout/Logo.tsx.
+ * `bleed`: square edge-to-edge tile without the hairline frame (Apple / maskable icons get masked by the OS).
+ * `scale`: shrink the play glyph toward the centre (maskable safe zone).
+ */
 function markSvg({ bleed = false, scale = 1 } = {}) {
-  const holes = [4, 13, 22]
-    .flatMap((x) => [
-      `<rect x="${x}" y="3" width="4" height="4" rx="1" fill="#fff" fill-opacity=".35"/>`,
-      `<rect x="${x}" y="25" width="4" height="4" rx="1" fill="#fff" fill-opacity=".35"/>`,
-    ])
-    .join('');
-  const inner = `<g transform="translate(16 16) scale(${scale}) translate(-16 -16)">${holes}
-    <text x="16" y="17" text-anchor="middle" dominant-baseline="central" font-family="${FONT}" font-weight="900"
-      font-size="13" letter-spacing="-0.5" fill="#fff">mk</text></g>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0" stop-color="#7c3aed"/><stop offset="1" stop-color="#4f46e5"/></linearGradient></defs>
-  <rect width="32" height="32" rx="${bleed ? 0 : 7}" fill="url(#g)"/>${inner}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#23232c"/><stop offset="1" stop-color="#07070a"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff0bf"/><stop offset=".45" stop-color="#f5b83d"/><stop offset="1" stop-color="#a86a0c"/></linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+  <rect width="64" height="64" rx="${bleed ? 0 : 15}" fill="url(#bg)"/>
+  ${bleed ? '' : '<rect x="1.25" y="1.25" width="61.5" height="61.5" rx="13.8" fill="none" stroke="url(#gold)" stroke-opacity=".55" stroke-width="1.5"/>'}
+  <rect width="64" height="32" rx="${bleed ? 0 : 15}" fill="url(#sheen)"/>
+  <g transform="translate(32 32) scale(${scale}) translate(-32 -32)">
+    <path d="M25 18.5 L47 32 L25 45.5 Z" fill="url(#gold)" stroke="url(#gold)" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M25 18.5 L47 32 L36 32 Z" fill="#fff" fill-opacity=".22"/></g></svg>`;
 }
 
 /** PNG-in-ICO container (Vista+; every current browser reads it). */

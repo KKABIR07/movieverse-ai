@@ -1,5 +1,15 @@
 import { ImageResponse } from 'next/og';
 
+const BRAND_MARK = `data:image/svg+xml;utf8,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs>' +
+    '<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#23232c"/><stop offset="1" stop-color="#07070a"/></linearGradient>' +
+    '<linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff0bf"/><stop offset=".45" stop-color="#f5b83d"/><stop offset="1" stop-color="#a86a0c"/></linearGradient></defs>' +
+    '<rect width="64" height="64" rx="15" fill="url(#bg)"/>' +
+    '<rect x="1.25" y="1.25" width="61.5" height="61.5" rx="13.8" fill="none" stroke="url(#gold)" stroke-opacity=".55" stroke-width="1.5"/>' +
+    '<path d="M25 18.5 L47 32 L25 45.5 Z" fill="url(#gold)" stroke="url(#gold)" stroke-width="5" stroke-linejoin="round"/>' +
+    '<path d="M25 18.5 L47 32 L36 32 Z" fill="#fff" fill-opacity=".22"/></svg>',
+)}`;
+
 // Static brand card (no TMDB data), so it is safe to prerender at build time.
 export const alt = 'mkmovies: discover movies and TV shows';
 export const size = { width: 1200, height: 630 };
@@ -30,25 +40,13 @@ export default function OpengraphImage() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-          <div
-            style={{
-              width: 64,
-              height: 64,
-              borderRadius: 16,
-              // brand mark: same violet→indigo tile as the favicon
-              background: 'linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 28,
-              fontWeight: 700,
-              letterSpacing: -1,
-            }}
-          >
-            mk
+          {/* brand mark: "Noir & Gold" (same geometry as <LogoMark> and the favicon) */}
+          {/* eslint-disable-next-line @next/next/no-img-element -- ImageResponse (Satori) renders plain <img>; next/image does not apply */}
+          <img src={BRAND_MARK} width={64} height={64} alt="" />
+          <div style={{ display: 'flex', fontSize: 36, letterSpacing: -1 }}>
+            <span style={{ fontWeight: 700, color: '#f5b83d' }}>mk</span>
+            <span style={{ fontWeight: 500 }}>movies</span>
           </div>
-          <div style={{ fontSize: 36, fontWeight: 700, letterSpacing: -1 }}>mkmovies</div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column' }}>
