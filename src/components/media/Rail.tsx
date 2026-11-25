@@ -154,7 +154,7 @@ export function Rail({
         ref={scroller}
         onKeyDown={onKeyDown}
         aria-label={title ? undefined : label}
-        className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain px-gutter scroll-px-[var(--gutter)] pb-2 pt-1"
+        className="no-scrollbar flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain px-gutter scroll-px-[var(--gutter)] pb-2 pt-1"
         style={{
           gap,
           maskImage: `linear-gradient(to right, transparent 0, #000 ${fadeStart}, #000 calc(100% - ${fadeEnd}), transparent 100%)`,
