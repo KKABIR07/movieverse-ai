@@ -3,19 +3,43 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { FollowedPerson } from '@/types/tmdb';
+import { followsApi } from '@/lib/sync/follows';
+import { friendlyError } from '@/lib/sync/http';
+import { toast } from './toastStore';
 
+/**
+ * People the signed-in user follows. Server-backed (`/api/follows`): follow / unfollow
+ * update the list optimistically and roll back with a toast when the request fails.
+ * The persisted copy is only a cache for a fast first paint; `hydrate()` replaces it.
+ */
 interface FollowingStore {
   following: FollowedPerson[];
-  counts: Record<number, number>;   // personId → follower count
+  /** personId → follower count (public). */
+  counts: Record<number, number>;
 
-  follow: (person: Omit<FollowedPerson, 'followedAt'>) => Promise<void>;
-  unfollow: (personId: number) => Promise<void>;
+  /** Resolves true when the server accepted the follow. */
+  follow: (person: Omit<FollowedPerson, 'followedAt'>) => Promise<boolean>;
+  unfollow: (personId: number) => Promise<boolean>;
   isFollowing: (personId: number) => boolean;
   setCount: (personId: number, count: number) => void;
   setCounts: (counts: Record<number, number>) => void;
+  /** Fetch public follower counts for these ids (≤100, cached in `counts`). */
+  loadCounts: (ids: number[]) => Promise<void>;
+  /** Replace the list with the server's. */
   hydrate: () => Promise<void>;
   reset: () => void;
 }
+
+/**
+ * People followed/unfollowed since the last hydrate() started. A list fetched before such a click must
+ * not overwrite it (seen in e2e: Follow clicked while the sign-in hydrate was in flight → the stale list
+ * flipped the button back although the server had saved it). Local state for these ids wins: it is
+ * either confirmed by the server or already rolled back.
+ */
+const touched = new Set<number>();
+
+const bump = (counts: Record<number, number>, id: number, delta: number) =>
+  id in counts ? { ...counts, [id]: Math.max(0, counts[id] + delta) } : counts;
 
 export const useFollowingStore = create<FollowingStore>()(
   persist(
@@ -24,73 +48,87 @@ export const useFollowingStore = create<FollowingStore>()(
       counts: {},
 
       follow: async (person) => {
-        set((s) => ({
-          following: s.following.some((f) => f.id === person.id)
-            ? s.following
-            : [{ ...person, followedAt: new Date().toISOString() }, ...s.following],
-        }));
+        if (get().isFollowing(person.id)) return true;
+        touched.add(person.id);
+        const entry: FollowedPerson = { ...person, followedAt: new Date().toISOString() };
+        set((s) => ({ following: [entry, ...s.following], counts: bump(s.counts, person.id, 1) }));
         try {
-          const res = await fetch('/api/follows', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              personId: person.id,
-              personName: person.name,
-              personImage: person.profile_path,
-              department: person.known_for_department,
-            }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            set((s) => ({ counts: { ...s.counts, [person.id]: data.followerCount } }));
-          }
-        } catch { /* optimistic — local state already updated */ }
+          const count = await followsApi.follow(person);
+          if (count !== null) set((s) => ({ counts: { ...s.counts, [person.id]: count } }));
+          return true;
+        } catch (err) {
+          set((s) => ({
+            following: s.following.filter((f) => f.id !== person.id),
+            counts: bump(s.counts, person.id, -1),
+          }));
+          toast({ title: `Couldn't follow ${person.name}`, description: friendlyError(err), tone: 'danger' });
+          return false;
+        }
       },
 
       unfollow: async (personId) => {
-        set((s) => ({ following: s.following.filter((f) => f.id !== personId) }));
+        const prev = get().following.find((f) => f.id === personId);
+        if (!prev) return true;
+        touched.add(personId);
+        set((s) => ({ following: s.following.filter((f) => f.id !== personId), counts: bump(s.counts, personId, -1) }));
         try {
-          const res = await fetch('/api/follows', {
-            method: 'DELETE',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ personId }),
-          });
-          if (res.ok) {
-            const data = await res.json();
-            set((s) => ({ counts: { ...s.counts, [personId]: data.followerCount } }));
-          }
-        } catch { /* optimistic */ }
+          const count = await followsApi.unfollow(personId);
+          if (count !== null) set((s) => ({ counts: { ...s.counts, [personId]: count } }));
+          return true;
+        } catch (err) {
+          set((s) => ({
+            following: s.following.some((f) => f.id === personId) ? s.following : [prev, ...s.following],
+            counts: bump(s.counts, personId, 1),
+          }));
+          toast({ title: `Couldn't unfollow ${prev.name}`, description: friendlyError(err), tone: 'danger' });
+          return false;
+        }
       },
 
       isFollowing: (personId) => get().following.some((f) => f.id === personId),
 
-      setCount: (personId, count) =>
-        set((s) => ({ counts: { ...s.counts, [personId]: count } })),
+      setCount: (personId, count) => set((s) => ({ counts: { ...s.counts, [personId]: count } })),
 
-      setCounts: (counts) =>
-        set((s) => ({ counts: { ...s.counts, ...counts } })),
+      setCounts: (counts) => set((s) => ({ counts: { ...s.counts, ...counts } })),
+
+      loadCounts: async (ids) => {
+        try {
+          const counts = await followsApi.counts(ids);
+          if (Object.keys(counts).length) set((s) => ({ counts: { ...s.counts, ...counts } }));
+        } catch {
+          /* counts are decorative */
+        }
+      },
 
       hydrate: async () => {
         try {
-          const res = await fetch('/api/follows');
-          if (!res.ok) return;
-          const { following } = await res.json();
-          const mapped: FollowedPerson[] = (following ?? []).map((f: {
-            personId: number; personName: string; personImage: string | null;
-            department: string; followedAt: string;
-          }) => ({
-            id: f.personId,
-            name: f.personName,
-            profile_path: f.personImage,
-            known_for_department: f.department,
-            followedAt: f.followedAt,
+          touched.clear();
+          const server = await followsApi.list();
+          set((s) => ({
+            following: [
+              ...s.following.filter((f) => touched.has(f.id)),
+              ...server.filter((f) => !touched.has(f.id)),
+            ],
           }));
-          set({ following: mapped });
-        } catch { /* offline */ }
+        } catch {
+          /* offline / DB down: keep the cached copy */
+        }
       },
 
-      reset: () => set({ following: [], counts: {} }),
+      reset: () => {
+        touched.clear();
+        set({ following: [], counts: {} });
+      },
     }),
-    { name: 'mkmovies-following' }
-  )
+    {
+      name: 'mkmovies-following',
+      skipHydration: true,
+      partialize: (s) => ({ following: s.following, counts: s.counts }),
+    },
+  ),
 );
+
+/** Re-renders only when this person's followed state flips. */
+export const useIsFollowing = (personId: number) => useFollowingStore((s) => s.following.some((f) => f.id === personId));
+/** Follower count for one person (undefined until loaded). */
+export const useFollowerCount = (personId: number) => useFollowingStore((s) => s.counts[personId]);

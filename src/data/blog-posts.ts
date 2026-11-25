@@ -47,7 +47,7 @@ export const BLOG_POSTS: BlogPost[] = [
 <p>After years of the comedy genre being declared "dead" by think-pieces, 2025 has seen a genuine revival. Original comedies — not sequels or IP adaptations — are landing well with audiences starved for genuine laughter. Expect sharp dialogue, breakout performances from character actors, and tight 90-minute runtimes that respect your time.</p>
 
 <h2>How to Find These Films on mkmovies</h2>
-<p>Every movie mentioned in our editorial recommendations is searchable directly on mkmovies. Use the <strong>Search</strong> feature to find any title by name, or browse <strong>Trending Now</strong> for real-time popular films pulled from TMDB's global data. You can save anything to your Watchlist with one click — no account required for browsing, though signing up lets you track everything across devices.</p>
+<p>Every movie mentioned in our editorial recommendations is searchable directly on mkmovies. Use the <strong>Search</strong> feature to find any title by name, or browse <strong>Trending Now</strong> for real-time popular films pulled from TMDB's global data. Browsing needs no account; a free account lets you save anything to your Watchlist with one click and keeps it synced across devices.</p>
 
 <h2>Where to Stream</h2>
 <p>Each movie detail page on mkmovies shows available streaming providers for your region, including subscription services, rental, and purchase options. This saves you the frustration of hunting across multiple platforms. The data is sourced from TMDB's provider partnerships and updated regularly.</p>
@@ -119,12 +119,12 @@ export const BLOG_POSTS: BlogPost[] = [
 <p>Most people have a "watchlist" that's really just a graveyard of good intentions: a note on your phone, a browser tab pinned for months, a half-remembered recommendation from a friend. The problem isn't the films — it's the system. A good watchlist requires both capture and curation.</p>
 
 <h2>The Two Phases: Capture and Curation</h2>
-<p><strong>Capture</strong> is adding films the moment you hear about them — from a trailer, a conversation, a review, or a recommendation. Friction here is fatal. If adding a movie requires more than two taps, you won't do it when the moment passes. mkmovies is designed for this: every movie and TV show has a bookmark button on its detail page. One tap saves it to your active watchlist. No account required to browse, though creating a free account syncs your watchlist to the cloud.</p>
+<p><strong>Capture</strong> is adding films the moment you hear about them — from a trailer, a conversation, a review, or a recommendation. Friction here is fatal. If adding a movie requires more than two taps, you won't do it when the moment passes. mkmovies is designed for this: every movie and TV show has a bookmark button on its detail page. One tap saves it to your watchlist. Browsing needs no account; saving needs a free account, which keeps your watchlist synced across devices.</p>
 <p><strong>Curation</strong> is the harder part. Your watchlist will grow faster than you watch. Without curation, it becomes a source of anxiety rather than excitement. The goal is to regularly prune it down to a short list of films you're genuinely excited to watch next — not an archive of everything you've ever been vaguely interested in.</p>
 
 <h2>Create Multiple Lists by Mood</h2>
 <p>A single monolithic watchlist doesn't account for the fact that you're a different viewer on different days. Some nights you want a 2-hour epic. Others you want a 90-minute comedy. Some weekends you want to share the screen with family; others you want to challenge yourself with something demanding.</p>
-<p>mkmovies supports multiple named watchlists. The suggested structure:</p>
+<p>mkmovies keeps one watchlist that you can filter by type and sort, which covers most of this. If you like to keep separate mood lists as well, a good structure is:</p>
 <ul>
   <li><strong>Watch Tonight</strong> — 5–10 films, always ready to pick from immediately</li>
   <li><strong>Weekend Cinema</strong> — longer, more demanding films that deserve full attention</li>
@@ -138,7 +138,7 @@ export const BLOG_POSTS: BlogPost[] = [
 
 <h2>Tracking What You've Watched</h2>
 <p>Tracking watched films serves a purpose beyond nostalgia. Reviewing your viewing history reveals patterns: genres you've over-indexed on, directors you keep returning to, periods in film history you've neglected. This data makes future recommendations more accurate — both from AI tools and from your own self-knowledge as a viewer.</p>
-<p>mkmovies' rating system (1–10 per title) also feeds into this. Rating films you've watched helps the AI assistant understand your taste with greater precision over time. The more context it has, the better it performs.</p>
+<p>mkmovies lets you rate each title from 1 to 10, so you keep a record of what you thought. When you ask the AI assistant for suggestions, name a few films you rated highly — the more context it has, the better it performs.</p>
 
 <h2>Following Stars for Automatic Discovery</h2>
 <p>One underused watchlist strategy: follow directors and actors whose track records you trust. When you follow a star on mkmovies, their new and recent work appears in your Feed automatically. This means you never miss a release from filmmakers whose work consistently resonates with you — without having to monitor their news separately.</p>

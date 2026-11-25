@@ -1,45 +1,61 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/db/mongoose';
-import { Follow } from '@/lib/db/models';
-import { getSession } from '@/lib/db/auth';
+import { and, count, desc, eq, sql } from 'drizzle-orm';
+import { getDb, type Db } from '@/lib/db/client';
+import { follows } from '@/lib/db/schema';
+import { requireSession } from '@/lib/db/auth';
+import { json, readJson, withHandler } from '@/lib/server/http';
+import { followCreateSchema, followDeleteSchema } from '@/lib/server/validation';
+import { toFollowDTO } from '@/lib/server/dto';
 
-export async function GET() {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+const MAX_FOLLOWS_RETURNED = 1000;
 
-  await connectDB();
-  const docs = await Follow.find({ userId: session.userId }).sort({ followedAt: -1 });
-  return NextResponse.json({ following: docs });
+async function followerCount(db: Db, personId: number): Promise<number> {
+  const [{ n }] = await db.select({ n: count() }).from(follows).where(eq(follows.personId, personId));
+  return n;
 }
 
-export async function POST(req: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+/** GET /api/follows (auth) → { following: FollowDTO[] } newest first */
+export const GET = withHandler('follows.GET', async (req) => {
+  const s = await requireSession(req);
+  const rows = await getDb()
+    .select({
+      personId: follows.personId,
+      personName: follows.personName,
+      personImage: follows.personImage,
+      department: follows.department,
+      createdAt: follows.createdAt,
+    })
+    .from(follows)
+    .where(eq(follows.userId, s.userId))
+    .orderBy(desc(follows.createdAt), desc(follows.personId))
+    .limit(MAX_FOLLOWS_RETURNED);
+  return json({ following: rows.map(toFollowDTO) });
+});
 
-  const { personId, personName, personImage, department } = await req.json();
-  if (!personId || !personName) return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
+/** POST /api/follows (auth) body { personId, personName, personImage?, department? } → { success, followerCount } (idempotent) */
+export const POST = withHandler('follows.POST', async (req) => {
+  const s = await requireSession(req);
+  const { personId, personName, personImage, department } = await readJson(req, followCreateSchema);
+  const db = getDb();
+  // Re-following refreshes the display fields but keeps the original follow time.
+  await db
+    .insert(follows)
+    .values({ userId: s.userId, personId, personName, personImage, department })
+    .onConflictDoUpdate({
+      target: [follows.userId, follows.personId],
+      set: {
+        personName: sql`excluded.person_name`,
+        personImage: sql`excluded.person_image`,
+        department: sql`excluded.department`,
+      },
+    });
+  return json({ success: true, followerCount: await followerCount(db, personId) });
+});
 
-  await connectDB();
-  await Follow.findOneAndUpdate(
-    { userId: session.userId, personId },
-    { personName, personImage: personImage ?? null, department: department ?? 'Acting', followedAt: new Date() },
-    { upsert: true }
-  );
-
-  const count = await Follow.countDocuments({ personId });
-  return NextResponse.json({ success: true, followerCount: count });
-}
-
-export async function DELETE(req: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const { personId } = await req.json();
-  if (!personId) return NextResponse.json({ error: 'Missing personId' }, { status: 400 });
-
-  await connectDB();
-  await Follow.deleteOne({ userId: session.userId, personId });
-
-  const count = await Follow.countDocuments({ personId });
-  return NextResponse.json({ success: true, followerCount: count });
-}
+/** DELETE /api/follows (auth) body { personId } → { success, followerCount } (idempotent) */
+export const DELETE = withHandler('follows.DELETE', async (req) => {
+  const s = await requireSession(req);
+  const { personId } = await readJson(req, followDeleteSchema);
+  const db = getDb();
+  await db.delete(follows).where(and(eq(follows.userId, s.userId), eq(follows.personId, personId)));
+  return json({ success: true, followerCount: await followerCount(db, personId) });
+});

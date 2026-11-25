@@ -1,220 +1,190 @@
-'use client';
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { connection } from 'next/server';
+import { SearchX } from 'lucide-react';
+import { getGenres, getTrending, searchMovies, searchMulti, searchPeople, searchTv } from '@/lib/tmdb/server';
+import { MediaGrid, PersonCard, Rail } from '@/components/media';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { Pagination } from '@/components/ui/Pagination';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { chipClass } from '@/components/ui/Chip';
+import { LoadError, PERSON_GRID_COLS, load } from '@/components/browse/BrowseStates';
+import { FilterLinks } from '@/components/browse/FilterLinks';
+import { GenreTiles } from '@/components/browse/GenreTiles';
+import { SearchForm } from '@/components/browse/SearchForm';
+import { pageMeta } from '@/components/browse/meta';
+import { buildHref, first, parsePage, pick, type RawParams } from '@/components/browse/params';
+import { toPeople, toSummaries } from '@/components/browse/trim';
+import { formatCount } from '@/lib/format';
 
-import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { Search, Filter, X } from 'lucide-react';
-import { tmdb } from '@/lib/tmdb';
-import { MovieGrid } from '@/components/movie/MovieGrid';
-import { GENRES } from '@/types/tmdb';
+const TABS = ['all', 'movie', 'tv', 'person'] as const;
+type Tab = (typeof TABS)[number];
+const TAB_LABEL: Record<Tab, string> = { all: 'All', movie: 'Movies', tv: 'TV shows', person: 'People' };
+type Props = { searchParams: Promise<RawParams> };
 
-const SORT_OPTIONS = [
-  { value: 'popularity.desc', label: 'Most Popular' },
-  { value: 'vote_average.desc', label: 'Highest Rated' },
-  { value: 'release_date.desc', label: 'Newest First' },
-  { value: 'revenue.desc', label: 'Highest Grossing' },
-];
+const readQuery = (sp: RawParams) => (first(sp.q) ?? '').slice(0, 100);
 
-const YEARS = Array.from({ length: 35 }, (_, i) => (2025 - i).toString());
-
-function SearchContent() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const initialQuery = searchParams.get('q') ?? '';
-
-  const [query, setQuery] = useState(initialQuery);
-  const [inputValue, setInputValue] = useState(initialQuery);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [selectedGenre, setSelectedGenre] = useState('');
-  const [selectedYear, setSelectedYear] = useState('');
-  const [sortBy, setSortBy] = useState('popularity.desc');
-  const [mediaType, setMediaType] = useState<'movie' | 'tv'>('movie');
-  const [page, setPage] = useState(1);
-
-  const hasFilters = !!selectedGenre || !!selectedYear;
-
-  const { data: searchMovies, isLoading: searchMovieLoading } = useQuery({
-    queryKey: ['search', 'movie', query, page],
-    queryFn: () => tmdb.search.movie(query, page),
-    enabled: query.length > 0 && mediaType === 'movie',
+export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
+  const q = readQuery(await searchParams);
+  return pageMeta({
+    title: q ? `Search results for “${q}”` : 'Search',
+    description: 'Search movies, TV shows and people on mkmovies.',
+    path: '/search',
+    noindex: true,
   });
+}
 
-  const { data: searchTV, isLoading: searchTVLoading } = useQuery({
-    queryKey: ['search', 'tv', query, page],
-    queryFn: () => tmdb.search.tv(query, page),
-    enabled: query.length > 0 && mediaType === 'tv',
-  });
-
-  const { data: discoverResults, isLoading: discoverLoading } = useQuery({
-    queryKey: ['discover', mediaType, selectedGenre, selectedYear, sortBy, page],
-    queryFn: () =>
-      tmdb.movie.discover({
-        with_genres: selectedGenre,
-        primary_release_year: selectedYear,
-        sort_by: sortBy,
-        page,
-      }),
-    enabled: query.length === 0,
-  });
-
-  const searchResults = mediaType === 'movie' ? searchMovies : searchTV;
-  const searchLoading = mediaType === 'movie' ? searchMovieLoading : searchTVLoading;
-  const results = query ? searchResults : discoverResults;
-  const isLoading = query ? searchLoading : discoverLoading;
-  const items = results?.results ?? [];
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setQuery(inputValue.trim());
-    setPage(1);
-    if (inputValue.trim()) {
-      router.replace(`/search?q=${encodeURIComponent(inputValue.trim())}`);
-    }
-  };
-
-  const clearSearch = () => {
-    setInputValue('');
-    setQuery('');
-    router.replace('/search');
-  };
+export default async function SearchPage({ searchParams }: Props) {
+  await connection();
+  const sp = await searchParams;
+  const q = readQuery(sp);
+  const tab = pick(sp.type, TABS, 'all');
+  const page = parsePage(sp.page);
+  const href = (p: Partial<{ type: Tab; page: number }>) => buildHref('/search', { q, type: tab, page, ...p }, { type: 'all' });
 
   return (
-    <div className="container mx-auto px-4 md:px-8 py-24 min-h-screen">
-      <h1 className="text-3xl font-black text-[var(--text-primary)] mb-6">Search</h1>
-
-      {/* Search bar */}
-      <form onSubmit={handleSearch} className="relative mb-6">
-        <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-        <input
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          placeholder="Search movies, TV shows, people..."
-          className="w-full bg-[var(--bg-card)] border border-[var(--border)] focus:border-[var(--accent-primary)] rounded-2xl pl-12 pr-32 py-4 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none transition-colors text-base"
-        />
-        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-          {inputValue && (
-            <button type="button" onClick={clearSearch} className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
-              <X size={16} />
-            </button>
+    <>
+      <PageHeader eyebrow="Search" title={q ? <>Results for “{q}”</> : 'Search'}>
+        <div className="flex flex-col gap-4">
+          <SearchForm
+            key={q}
+            action="/search"
+            defaultValue={q}
+            label="Search movies, TV shows and people"
+            placeholder="Search movies, TV shows, people"
+            hidden={{ type: tab === 'all' ? undefined : tab }}
+          />
+          {q && (
+            <FilterLinks
+              label="Result type"
+              value={tab}
+              options={TABS.map((t) => ({ value: t, label: TAB_LABEL[t], href: href({ type: t, page: 1 }) }))}
+            />
           )}
-          <button type="submit" className="px-4 py-1.5 bg-[var(--accent-primary)] text-white text-sm font-medium rounded-xl hover:bg-[var(--accent-secondary)] transition-colors">
-            Search
-          </button>
         </div>
-      </form>
-
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 mb-6 items-center">
-        <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
-          <button
-            onClick={() => setMediaType('movie')}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${mediaType === 'movie' ? 'bg-[var(--accent-primary)] text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
-          >
-            Movies
-          </button>
-          <button
-            onClick={() => setMediaType('tv')}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${mediaType === 'tv' ? 'bg-[var(--accent-primary)] text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
-          >
-            TV Shows
-          </button>
-        </div>
-
-        <button
-          onClick={() => setFilterOpen(!filterOpen)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-colors ${filterOpen || hasFilters ? 'border-[var(--accent-primary)] bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]' : 'border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
-        >
-          <Filter size={14} />
-          Filters {hasFilters && '•'}
-        </button>
-
-        <select
-          value={sortBy}
-          onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
-          className="px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] text-sm text-[var(--text-secondary)] focus:outline-none focus:border-[var(--accent-primary)]"
-        >
-          {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      </div>
-
-      {/* Filter panel */}
-      {filterOpen && (
-        <div className="glass rounded-2xl p-5 mb-6 grid grid-cols-2 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-2 font-medium">Genre</label>
-            <select
-              value={selectedGenre}
-              onChange={(e) => { setSelectedGenre(e.target.value); setPage(1); }}
-              className="w-full px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-primary)]"
-            >
-              <option value="">All Genres</option>
-              {GENRES.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-2 font-medium">Year</label>
-            <select
-              value={selectedYear}
-              onChange={(e) => { setSelectedYear(e.target.value); setPage(1); }}
-              className="w-full px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-primary)]"
-            >
-              <option value="">All Years</option>
-              {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-          <div className="flex items-end">
-            <button
-              onClick={() => { setSelectedGenre(''); setSelectedYear(''); setSortBy('popularity.desc'); setPage(1); }}
-              className="w-full px-3 py-2 rounded-xl border border-[var(--border)] text-sm text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
-            >
-              Reset
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Results count */}
-      {results && (
-        <p className="text-sm text-[var(--text-muted)] mb-4">
-          {(results as { total_results: number }).total_results.toLocaleString()} results
-          {query ? ` for "${query}"` : ''}
-        </p>
-      )}
-
-      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      <MovieGrid items={items as any[]} mediaType={mediaType} loading={isLoading ?? false} />
-
-      {/* Pagination */}
-      {results && (results as { total_pages: number }).total_pages > 1 && (
-        <div className="flex justify-center gap-3 mt-10">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="px-4 py-2 rounded-xl border border-[var(--border)] text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            Previous
-          </button>
-          <span className="px-4 py-2 text-sm text-[var(--text-muted)]">
-            {page} / {Math.min((results as { total_pages: number }).total_pages, 500)}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min((results as { total_pages: number }).total_pages, p + 1))}
-            disabled={page >= (results as { total_pages: number }).total_pages || page >= 500}
-            className="px-4 py-2 rounded-xl border border-[var(--border)] text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          >
-            Next
-          </button>
-        </div>
-      )}
-    </div>
+      </PageHeader>
+      <div className="px-gutter pb-8">{q ? <Results q={q} tab={tab} page={page} href={href} /> : <NoQuery />}</div>
+    </>
   );
 }
 
-export default function SearchPage() {
+async function Results({ q, tab, page, href }: { q: string; tab: Tab; page: number; href: (p: Partial<{ type: Tab; page: number }>) => string }) {
+  const retry = href({});
+  const empty = (
+    <EmptyState
+      icon={<SearchX />}
+      title={`No ${tab === 'all' ? 'results' : TAB_LABEL[tab].toLowerCase()} for “${q}”`}
+      description="Check the spelling, or try a shorter or different title."
+    />
+  );
+  const pager = (total: number) => <Pagination page={page} totalPages={total} hrefForPage={(p) => href({ page: p })} label="Search results pages" />;
+  const count = (n: number) => (
+    <p className="mb-6 text-caption text-fg-muted tabular" role="status">
+      {formatCount(n)} {n === 1 ? 'result' : 'results'}
+    </p>
+  );
+
+  if (tab === 'person') {
+    const res = await load('search/person', searchPeople(q, page));
+    if (!res.ok) return <LoadError retryHref={retry} title="Search failed" />;
+    const people = toPeople(res.data.results);
+    if (!people.length) return empty;
+    return (
+      <>
+        {count(res.data.total_results)}
+        <ul aria-label="People" className={PERSON_GRID_COLS}>
+          {people.map((p) => (
+            <li key={p.id}>
+              <PersonCard person={p} />
+            </li>
+          ))}
+        </ul>
+        {pager(res.data.total_pages)}
+      </>
+    );
+  }
+
+  if (tab === 'movie' || tab === 'tv') {
+    const res = tab === 'movie' ? await load('search/movie', searchMovies(q, page)) : await load('search/tv', searchTv(q, page));
+    if (!res.ok) return <LoadError retryHref={retry} title="Search failed" />;
+    const items = toSummaries(res.data.results, tab);
+    if (!items.length) return empty;
+    return (
+      <>
+        {count(res.data.total_results)}
+        <MediaGrid items={items} label={TAB_LABEL[tab]} />
+        {pager(res.data.total_pages)}
+      </>
+    );
+  }
+
+  const res = await load('search/multi', searchMulti(q, page));
+  if (!res.ok) return <LoadError retryHref={retry} title="Search failed" />;
+  const media = toSummaries(res.data.results);
+  const people = toPeople(
+    res.data.results
+      .filter((r) => r.media_type === 'person')
+      .map((r) => ({ id: r.id, name: r.name ?? '', profile_path: r.profile_path ?? null, media_type: 'person' })),
+  );
+  if (!media.length && !people.length) return empty;
   return (
-    <Suspense>
-      <SearchContent />
-    </Suspense>
+    <>
+      {count(res.data.total_results)}
+      {people.length > 0 && (
+        <div className="-mx-[var(--gutter)] mb-10">
+          <Rail title="People" href={href({ type: 'person', page: 1 })} variant="person">
+            {people.map((p) => (
+              <PersonCard key={p.id} person={p} />
+            ))}
+          </Rail>
+        </div>
+      )}
+      {media.length > 0 && (
+        <section aria-labelledby="titles-heading">
+          <h2 id="titles-heading" className="mb-4 text-h2 text-fg">
+            Movies &amp; TV
+          </h2>
+          <MediaGrid items={media} label="Movies and TV shows" />
+        </section>
+      )}
+      {pager(res.data.total_pages)}
+    </>
+  );
+}
+
+async function NoQuery() {
+  const [trending, genres] = await Promise.all([load('trending/all/week', getTrending('all', 'week')), load('genre/movie', getGenres('movie'))]);
+  const year = new Date().getUTCFullYear();
+  const years = Array.from({ length: 12 }, (_, i) => year - i);
+  const items = trending.ok ? toSummaries(trending.data.results).slice(0, 12) : [];
+
+  return (
+    <div className="flex flex-col gap-12">
+      {items.length > 0 && (
+        <section aria-labelledby="trending-heading">
+          <SectionHeader id="trending-heading" title="Trending this week" href="/trending" />
+          <MediaGrid items={items} label="Trending this week" />
+        </section>
+      )}
+      {genres.ok && genres.data.length > 0 && (
+        <section aria-labelledby="genres-heading">
+          <SectionHeader id="genres-heading" title="Browse by genre" />
+          <GenreTiles genres={genres.data} />
+        </section>
+      )}
+      <section aria-labelledby="years-heading">
+        <SectionHeader id="years-heading" title="Browse by year" />
+        <ul className="flex flex-wrap gap-2">
+          {years.map((y) => (
+            <li key={y}>
+              <Link href={`/discover?year_from=${y}&year_to=${y}`} className={chipClass(false, 'md')}>
+                {y}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
   );
 }

@@ -1,28 +1,42 @@
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/store/authStore';
 import { useFollowingStore } from '@/store/followingStore';
+import { cleanupLegacyStorage, reconcileUserScope, rehydratePersistedStores } from '@/store/hydration';
+import { Toaster } from '@/components/ui/Toast';
 
-function AuthHydrator() {
-  const { hydrate, user } = useAuthStore();
-  const { hydrate: hydrateFollowing, reset: resetFollowing } = useFollowingStore();
+/**
+ * Boot sequence (client only, once):
+ *  1. rehydrate persisted zustand stores (they use skipHydration, so the first
+ *     client render matches the server HTML)
+ *  2. ask the server who we are (/api/auth/me)
+ * Then, whenever the confirmed user changes, enforce per-user data ownership
+ * (wipe on logout / account switch) and sync the following list.
+ */
+function SessionSync() {
+  const status = useAuthStore((s) => s.status);
+  const userId = useAuthStore((s) => s.user?.id ?? null);
+  const [storesReady, setStoresReady] = useState(false);
 
   useEffect(() => {
-    hydrate().then(() => {
-      // After auth hydration, sync following list from server
-      useAuthStore.getState().user ? hydrateFollowing() : undefined;
+    let cancelled = false;
+    cleanupLegacyStorage();
+    rehydratePersistedStores().then(() => {
+      if (!cancelled) setStoresReady(true);
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    void useAuthStore.getState().hydrate();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // When user logs in, sync following; when logs out, clear it
   useEffect(() => {
-    if (user) hydrateFollowing();
-    else resetFollowing();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.email]);
+    if (!storesReady) return;
+    reconcileUserScope(status, userId);
+    if (status === 'authenticated') void useFollowingStore.getState().hydrate();
+  }, [storesReady, status, userId]);
 
   return null;
 }
@@ -39,13 +53,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
             refetchOnWindowFocus: false,
           },
         },
-      })
+      }),
   );
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthHydrator />
+      <SessionSync />
       {children}
+      <Toaster />
     </QueryClientProvider>
   );
 }

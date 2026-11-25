@@ -1,0 +1,28 @@
+node_modules
+.next
+.git
+.claude
+.vercel
+.env
+.env.*
+!.env.example
+tests
+e2e
+coverage
+playwright-report
+test-results
+*.tsbuildinfo
+Plan_WIP.md
+CLAUDE_REFERENCE
+ss
+# On the box, /opt/mkmovies (the build context) is also where all persistent state lives.
+# None of it may enter the image — and pgdata/backups/logs are not readable by the deploy user anyway.
+lost+found
+data
+pgdata
+backups
+logs
+cache
+DISK_WARNING
+scripts
+deploy

@@ -1,6 +1,5 @@
-import { NextResponse } from 'next/server';
 import { clearAuthCookie } from '@/lib/db/auth';
+import { json, withHandler } from '@/lib/server/http';
 
-export async function POST() {
-  return clearAuthCookie(NextResponse.json({ ok: true }));
-}
+/** Clears this browser's session cookie. Always 200 (idempotent, no auth required). */
+export const POST = withHandler('auth.logout', async () => clearAuthCookie(json({ ok: true })));

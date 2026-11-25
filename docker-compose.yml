@@ -1,0 +1,139 @@
+# MovieVerse AI (mkmovies) on the OCI box (mkb-007). Run with: docker compose -p mkmovies --env-file .env up -d --build
+# Cloudflare -> host Caddy (TLS) -> web (127.0.0.1:${APP_PORT}) -> db (PostgreSQL 17, internal network only).
+#
+# WHOLE-APP CAPS (see CLAUDE_REFERENCE/deployment.md):
+#   RAM 1 GB  — both containers run inside the systemd slice mkmovies.slice (MemoryMax=1G, MemorySwapMax=0,
+#               CPUQuota=150%, TasksMax=512; installed by scripts/setup-host.sh). Inside it, per-container caps
+#               keep one service from starving the other:  web 704m + db 288m = 992m  (32m slack <= 1024m).
+#   Disk 5 GB — all persistent state (source, .env, pgdata/, backups/, logs/) lives in /opt/mkmovies, a 5 GiB
+#               loop-mounted ext4 filesystem (scripts/setup-storage.sh). Container writable layers are read-only.
+#
+# cgroup_parent: "mkmovies.slice" with Docker's systemd cgroup driver (default on Ubuntu + cgroup v2).
+# With the cgroupfs driver, setup-host.sh tells deploy.sh to set MKMOVIES_CGROUP_PARENT=/mkmovies.slice in .env.
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" } # <= 30 MB per container
+
+services:
+  db:
+    image: postgres:17-alpine # same tag another tenant already uses on the box -> no extra image layers
+    container_name: mkmovies-db
+    restart: unless-stopped
+    pull_policy: missing
+    # Runs directly as the image's postgres user (uid/gid 70); setup-host.sh creates pgdata 70:70 0700.
+    user: "70:70"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-mkmovies}
+      POSTGRES_DB: ${POSTGRES_DB:-mkmovies}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256 --encoding=UTF8 --locale=C
+    volumes:
+      - ${PGDATA_DIR:-/opt/mkmovies/pgdata}:/var/lib/postgresql/data
+    # Tuned for a 288 MB container: shared_buffers + per-connection memory stay well inside the cap.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - effective_cache_size=160MB
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=20
+      - -c
+      - wal_buffers=4MB
+      - -c
+      - max_wal_size=256MB
+      - -c
+      - min_wal_size=64MB
+      - -c
+      - wal_compression=on
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - log_min_duration_statement=500ms
+      - -c
+      - "log_line_prefix=%m [%p] %q%u@%d "
+      - -c
+      - autovacuum=on
+      - -c
+      - huge_pages=off
+    shm_size: 64m
+    mem_limit: 288m
+    memswap_limit: 288m
+    cpus: 1.0
+    pids_limit: 128
+    cgroup_parent: ${MKMOVIES_CGROUP_PARENT:-mkmovies.slice}
+    read_only: true
+    tmpfs:
+      - /var/run/postgresql:size=1m,uid=70,gid=70,mode=0775
+      - /tmp:size=16m,uid=70,gid=70
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks: [backend] # internal network: no host port, no egress
+    healthcheck:
+      # -h 127.0.0.1 (not the socket) so the temporary socket-only server during first-run initdb is not "ready".
+      test: ["CMD-SHELL", "pg_isready -q -h 127.0.0.1 -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 6
+    stop_grace_period: 30s
+    logging: *logging
+
+  web:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-https://www.mkmovies.site}
+    image: mkmovies-web:latest
+    container_name: mkmovies-web
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # V8 heap 448 MB inside a 704 MB container: leaves room for native memory, buffers and tmpfs.
+      NODE_OPTIONS: --max-old-space-size=448
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be set in .env}
+      MIGRATIONS_DIR: /app/drizzle/migrations
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${APP_PORT:-3120}:3000" # loopback only; never exposed publicly
+    mem_limit: 704m
+    memswap_limit: 704m
+    cpus: 1.0
+    pids_limit: 256
+    cgroup_parent: ${MKMOVIES_CGROUP_PARENT:-mkmovies.slice}
+    # Immutable root filesystem. Writable paths: a small RAM tmpfs for /tmp (charged to the 704 MB cap)
+    # and Next's data/fetch cache on DISK inside the 5 GiB filesystem — not RAM, so cached TMDB responses
+    # never eat the shared 1 GB. The cache dir (uid 1001) is created by setup-host.sh and trimmed to
+    # <= 512 MB by disk-guard.sh (every 15 min) and deploy.sh; deleting cache files is always safe.
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    volumes:
+      - ${NEXT_CACHE_DIR:-/opt/mkmovies/cache/next}:/app/.next/cache
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks: [default, backend] # default = egress (TMDB/Groq/YouTube) + published port; backend = db
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    logging: *logging
+
+networks:
+  default: {}
+  backend:
+    internal: true

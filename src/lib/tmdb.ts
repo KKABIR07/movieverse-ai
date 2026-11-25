@@ -1,189 +1,148 @@
-import axios from 'axios';
-import type {
-  Movie,
-  TVShow,
-  PaginatedResponse,
-  Genre,
-  Person,
-  SearchMultiResult,
-  Credits,
-} from '@/types/tmdb';
+/**
+ * Browser TMDB client. Every call goes to our own allowlisted proxy (`/api/tmdb/...`), which adds the
+ * credentials server-side — no secrets in the bundle, and users whose ISP blocks api.themoviedb.org
+ * still get data. Server Components should import `@/lib/tmdb/server` instead.
+ *
+ * Call signatures / return shapes are unchanged from the previous axios client.
+ */
+import type { Movie, TVShow, PaginatedResponse, Genre, Person, SearchMultiResult, Credits, Video, WatchProviders } from '@/types/tmdb';
 
-const BASE_URL = 'https://api.themoviedb.org/3';
-const BEARER = process.env.NEXT_PUBLIC_TMDB_BEARER || '';
-const API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY || '';
+export {
+  IMAGE_BASE,
+  tmdbImage,
+  tmdbBackdrop,
+  tmdbProfile,
+  tmdbLogo,
+  getTrailerKey,
+  formatRuntime,
+  formatYear,
+  formatDate,
+  formatRating,
+  getRatingColor,
+} from './tmdb/format';
 
-export const TMDB_KEY_MISSING =
-  (!BEARER || BEARER.length < 20) && (!API_KEY || API_KEY === 'your_tmdb_api_key_here' || API_KEY.length < 10);
+/**
+ * @deprecated TMDB credentials are server-side now; the browser cannot know. Always false —
+ * a missing server key surfaces as a 503 from /api/tmdb (TmdbClientError.status === 503).
+ */
+export const TMDB_KEY_MISSING = false;
 
-export const IMAGE_BASE = 'https://image.tmdb.org/t/p';
-
-export const tmdbImage = (path: string | null, size: string = 'w500'): string => {
-  if (!path) return '/placeholder-poster.svg';
-  return `${IMAGE_BASE}/${size}${path}`;
-};
-
-export const tmdbBackdrop = (path: string | null): string => {
-  if (!path) return '/placeholder-backdrop.svg';
-  return `${IMAGE_BASE}/original${path}`;
-};
-
-// Prefer Bearer token (v4 auth); fall back to api_key param
-const api = axios.create({
-  baseURL: BASE_URL,
-  timeout: 10000,
-  headers: BEARER
-    ? { Authorization: `Bearer ${BEARER}` }
-    : {},
-  params: BEARER
-    ? { language: 'en-US' }
-    : { api_key: API_KEY, language: 'en-US' },
-});
-
-api.interceptors.request.use((config) => {
-  if (TMDB_KEY_MISSING) return Promise.reject(new Error('TMDB_KEY_MISSING'));
-  return config;
-});
-
-api.interceptors.response.use(
-  (res) => res,
-  (err) => {
-    if (err.message === 'TMDB_KEY_MISSING') return Promise.reject(err);
-    if (err.response?.status === 401) {
-      console.warn('[mkmovies] TMDB 401: check NEXT_PUBLIC_TMDB_BEARER in .env.local');
-    } else {
-      console.error('TMDB API Error:', err.response?.status, err.message);
-    }
-    return Promise.reject(err);
+/** Error thrown by the browser client. `retryable` is a good input for react-query's `retry`. */
+export class TmdbClientError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  constructor(status: number, message: string, code?: string) {
+    super(message);
+    this.name = 'TmdbClientError';
+    this.status = status;
+    this.code = code;
   }
-);
+  get retryable(): boolean {
+    return this.status === 0 || this.status === 429 || this.status === 502 || this.status === 503 || this.status === 504;
+  }
+}
 
-// Movies
+/** react-query helper: `retry: tmdbRetry` → up to 2 retries for transient failures only. */
+export const tmdbRetry = (failureCount: number, error: unknown): boolean =>
+  failureCount < 2 && error instanceof TmdbClientError && error.retryable;
+
+type Q = Record<string, string | number | boolean | undefined | null>;
+
+async function api<T>(path: string, params: Q = {}): Promise<T> {
+  if (typeof window === 'undefined') {
+    throw new TmdbClientError(0, 'The browser TMDB client was called on the server — import "@/lib/tmdb/server" instead.');
+  }
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== '') qs.set(k, String(v));
+  }
+  const query = qs.toString();
+  const url = `/api/tmdb/${path}${query ? `?${query}` : ''}`;
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: { Accept: 'application/json' }, credentials: 'omit' });
+  } catch {
+    throw new TmdbClientError(0, 'Network error — check your connection.');
+  }
+  if (!res.ok) {
+    let msg = `Request failed (${res.status})`;
+    let code: string | undefined;
+    try {
+      const body = (await res.json()) as { error?: string; code?: string };
+      if (body.error) msg = body.error;
+      code = body.code;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new TmdbClientError(res.status, msg, code);
+  }
+  return (await res.json()) as T;
+}
+
+type VideosResult = { results: Pick<Video, 'key' | 'type' | 'site' | 'official'>[] };
+type TimeWindow = 'day' | 'week';
+
 export const tmdb = {
   movie: {
-    trending: (timeWindow: 'day' | 'week' = 'week'): Promise<PaginatedResponse<Movie>> =>
-      api.get(`/trending/movie/${timeWindow}`).then((r) => r.data),
-
-    popular: (page = 1): Promise<PaginatedResponse<Movie>> =>
-      api.get('/movie/popular', { params: { page } }).then((r) => r.data),
-
-    topRated: (page = 1): Promise<PaginatedResponse<Movie>> =>
-      api.get('/movie/top_rated', { params: { page } }).then((r) => r.data),
-
-    nowPlaying: (page = 1): Promise<PaginatedResponse<Movie>> =>
-      api.get('/movie/now_playing', { params: { page } }).then((r) => r.data),
-
-    upcoming: (page = 1): Promise<PaginatedResponse<Movie>> =>
-      api.get('/movie/upcoming', { params: { page } }).then((r) => r.data),
-
+    trending: (timeWindow: TimeWindow = 'week', page = 1): Promise<PaginatedResponse<Movie>> =>
+      api(`trending/movie/${timeWindow}`, { page }),
+    popular: (page = 1): Promise<PaginatedResponse<Movie>> => api('movie/popular', { page }),
+    topRated: (page = 1): Promise<PaginatedResponse<Movie>> => api('movie/top_rated', { page }),
+    nowPlaying: (page = 1): Promise<PaginatedResponse<Movie>> => api('movie/now_playing', { page }),
+    upcoming: (page = 1): Promise<PaginatedResponse<Movie>> => api('movie/upcoming', { page }),
     detail: (id: number): Promise<Movie> =>
-      api
-        .get(`/movie/${id}`, {
-          params: {
-            append_to_response: 'videos,credits,similar,recommendations,watch/providers,keywords,images',
-          },
-        })
-        .then((r) => r.data),
-
-    similar: (id: number, page = 1): Promise<PaginatedResponse<Movie>> =>
-      api.get(`/movie/${id}/similar`, { params: { page } }).then((r) => r.data),
-
+      api(`movie/${id}`, {
+        append_to_response: 'videos,credits,similar,recommendations,watch/providers,keywords,images',
+        include_image_language: 'en,null',
+      }),
+    similar: (id: number, page = 1): Promise<PaginatedResponse<Movie>> => api(`movie/${id}/similar`, { page }),
     recommendations: (id: number, page = 1): Promise<PaginatedResponse<Movie>> =>
-      api.get(`/movie/${id}/recommendations`, { params: { page } }).then((r) => r.data),
-
+      api(`movie/${id}/recommendations`, { page }),
     discover: (params: Record<string, string | number>): Promise<PaginatedResponse<Movie>> =>
-      api.get('/discover/movie', { params: { sort_by: 'popularity.desc', ...params } }).then((r) => r.data),
-
-    credits: (id: number): Promise<Credits> =>
-      api.get(`/movie/${id}/credits`).then((r) => r.data),
-
-    videos: (id: number): Promise<{ results: { key: string; type: string; site: string; official: boolean }[] }> =>
-      api.get(`/movie/${id}/videos`).then((r) => r.data),
+      api('discover/movie', { sort_by: 'popularity.desc', ...params }),
+    credits: (id: number): Promise<Credits> => api(`movie/${id}/credits`),
+    videos: (id: number): Promise<VideosResult> => api(`movie/${id}/videos`),
+    watchProviders: (id: number): Promise<WatchProviders> => api(`movie/${id}/watch/providers`),
   },
 
   tv: {
-    trending: (timeWindow: 'day' | 'week' = 'week'): Promise<PaginatedResponse<TVShow>> =>
-      api.get(`/trending/tv/${timeWindow}`).then((r) => r.data),
-
-    popular: (page = 1): Promise<PaginatedResponse<TVShow>> =>
-      api.get('/tv/popular', { params: { page } }).then((r) => r.data),
-
-    topRated: (page = 1): Promise<PaginatedResponse<TVShow>> =>
-      api.get('/tv/top_rated', { params: { page } }).then((r) => r.data),
-
+    trending: (timeWindow: TimeWindow = 'week', page = 1): Promise<PaginatedResponse<TVShow>> =>
+      api(`trending/tv/${timeWindow}`, { page }),
+    popular: (page = 1): Promise<PaginatedResponse<TVShow>> => api('tv/popular', { page }),
+    topRated: (page = 1): Promise<PaginatedResponse<TVShow>> => api('tv/top_rated', { page }),
+    airingToday: (page = 1): Promise<PaginatedResponse<TVShow>> => api('tv/airing_today', { page }),
+    onTheAir: (page = 1): Promise<PaginatedResponse<TVShow>> => api('tv/on_the_air', { page }),
     detail: (id: number): Promise<TVShow> =>
-      api
-        .get(`/tv/${id}`, {
-          params: { append_to_response: 'videos,credits,similar,recommendations,watch/providers' },
-        })
-        .then((r) => r.data),
-
-    videos: (id: number): Promise<{ results: { key: string; type: string; site: string; official: boolean }[] }> =>
-      api.get(`/tv/${id}/videos`).then((r) => r.data),
+      api(`tv/${id}`, { append_to_response: 'videos,credits,similar,recommendations,watch/providers' }),
+    similar: (id: number, page = 1): Promise<PaginatedResponse<TVShow>> => api(`tv/${id}/similar`, { page }),
+    recommendations: (id: number, page = 1): Promise<PaginatedResponse<TVShow>> =>
+      api(`tv/${id}/recommendations`, { page }),
+    discover: (params: Record<string, string | number>): Promise<PaginatedResponse<TVShow>> =>
+      api('discover/tv', { sort_by: 'popularity.desc', ...params }),
+    credits: (id: number): Promise<Credits> => api(`tv/${id}/credits`),
+    videos: (id: number): Promise<VideosResult> => api(`tv/${id}/videos`),
+    watchProviders: (id: number): Promise<WatchProviders> => api(`tv/${id}/watch/providers`),
   },
 
   search: {
     multi: (query: string, page = 1): Promise<PaginatedResponse<SearchMultiResult>> =>
-      api.get('/search/multi', { params: { query, page, include_adult: false } }).then((r) => r.data),
-
+      api('search/multi', { query: query.slice(0, 100), page }),
     movie: (query: string, page = 1): Promise<PaginatedResponse<Movie>> =>
-      api.get('/search/movie', { params: { query, page, include_adult: false } }).then((r) => r.data),
-
-    tv: (query: string, page = 1): Promise<PaginatedResponse<TVShow>> =>
-      api.get('/search/tv', { params: { query, page } }).then((r) => r.data),
-
+      api('search/movie', { query: query.slice(0, 100), page }),
+    tv: (query: string, page = 1): Promise<PaginatedResponse<TVShow>> => api('search/tv', { query: query.slice(0, 100), page }),
     person: (query: string, page = 1): Promise<PaginatedResponse<Person>> =>
-      api.get('/search/person', { params: { query, page } }).then((r) => r.data),
+      api('search/person', { query: query.slice(0, 100), page }),
   },
 
   genre: {
-    movieList: (): Promise<{ genres: Genre[] }> =>
-      api.get('/genre/movie/list').then((r) => r.data),
-
-    tvList: (): Promise<{ genres: Genre[] }> =>
-      api.get('/genre/tv/list').then((r) => r.data),
+    movieList: (): Promise<{ genres: Genre[] }> => api('genre/movie/list'),
+    tvList: (): Promise<{ genres: Genre[] }> => api('genre/tv/list'),
   },
 
   person: {
-    detail: (id: number): Promise<Person> =>
-      api.get(`/person/${id}`, { params: { append_to_response: 'combined_credits,images' } }).then((r) => r.data),
-
-    popular: (page = 1): Promise<PaginatedResponse<Person>> =>
-      api.get('/person/popular', { params: { page } }).then((r) => r.data),
-
-    trending: (timeWindow: 'day' | 'week' = 'week', page = 1): Promise<PaginatedResponse<Person>> =>
-      api.get(`/trending/person/${timeWindow}`, { params: { page } }).then((r) => r.data),
+    detail: (id: number): Promise<Person> => api(`person/${id}`, { append_to_response: 'combined_credits,images' }),
+    popular: (page = 1): Promise<PaginatedResponse<Person>> => api('person/popular', { page }),
+    trending: (timeWindow: TimeWindow = 'week', page = 1): Promise<PaginatedResponse<Person>> =>
+      api(`trending/person/${timeWindow}`, { page }),
   },
-};
-
-export const getTrailerKey = (videos: { results: { type: string; site: string; key: string; official: boolean }[] } | undefined): string | null => {
-  if (!videos?.results?.length) return null;
-  const trailer =
-    videos.results.find((v) => v.type === 'Trailer' && v.site === 'YouTube' && v.official) ||
-    videos.results.find((v) => v.type === 'Trailer' && v.site === 'YouTube') ||
-    videos.results.find((v) => v.site === 'YouTube');
-  return trailer?.key ?? null;
-};
-
-export const formatRuntime = (minutes: number | undefined): string => {
-  if (!minutes) return 'N/A';
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-};
-
-export const formatYear = (dateStr: string | undefined): string => {
-  if (!dateStr) return 'N/A';
-  return new Date(dateStr).getFullYear().toString();
-};
-
-export const formatRating = (rating: number): string => {
-  return rating.toFixed(1);
-};
-
-export const getRatingColor = (rating: number): string => {
-  if (rating >= 7.5) return '#22c55e';
-  if (rating >= 6) return '#f59e0b';
-  if (rating >= 4) return '#f97316';
-  return '#ef4444';
 };
