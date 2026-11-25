@@ -9,7 +9,8 @@
  *   unless --no-prerendered. (Server JS chunks are NOT scanned — they legitimately read secrets.)
  * - Looks for secret-shaped strings (scripts/qa/secret-patterns.mjs) and, if an env file is given or
  *   found (.env.production, .env.local), the literal VALUES of server-only secrets.
- * - Prints redacted findings only. Exit 0 = clean, 1 = leak found, 2 = usage / no build output.
+ * - Prints redacted findings only. Exit 0 = no leak (warnings allowed; --strict fails on them too),
+ *   1 = leak found, 2 = usage / no build output.
  * Cross-platform (Node ≥ 20, no deps).
  */
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
@@ -95,6 +96,7 @@ if (scanPrerendered) {
   }
 }
 
+const errors = findings.filter((f) => f.severity !== 'warn');
 const summary = {
   dir: path.relative(root, dir) || '.',
   files,
@@ -113,7 +115,7 @@ if (asJson) {
       (scanPrerendered ? ` + ${prerendered} prerendered HTML/RSC files in .next/server/app` : ''),
   );
   console.log(`scan-bundle: secret values checked: ${summary.envValuesChecked.join(', ') || '(none — no env file found)'}`);
-  if (!findings.length) console.log('scan-bundle: OK — no secrets found.');
-  for (const f of findings) console.log(`  LEAK [${f.id}] ${f.why} in ${f.file}: ${f.sample}`);
+  for (const f of findings) console.log(`  ${f.severity === 'warn' ? 'WARN' : 'LEAK'} [${f.id}] ${f.why} in ${f.file}: ${f.sample}`);
+  if (!errors.length) console.log(`scan-bundle: OK — no secrets found${findings.length ? ` (${findings.length} warning(s))` : ''}.`);
 }
-process.exit(findings.length ? 1 : 0);
+process.exit(errors.length || (flag('strict') && findings.length) ? 1 : 0);

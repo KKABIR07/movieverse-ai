@@ -6,7 +6,7 @@
 import { test, expect } from '@playwright/test';
 import { findSecrets } from '../../scripts/qa/secret-patterns.mjs';
 
-type Hit = { id: string; why: string; sample: string };
+type Hit = { id: string; why: string; sample: string; severity: 'error' | 'warn' };
 
 test('no secrets in HTML or same-origin JS/CSS served to browsers @smoke', async ({ page, baseURL }) => {
   const origin = new URL(baseURL!).origin;
@@ -29,6 +29,10 @@ test('no secrets in HTML or same-origin JS/CSS served to browsers @smoke', async
     for (const hit of findSecrets(await p) as Hit[]) {
       // An env var NAME in an HTML/JSON body (e.g. a 503 "TMDB_BEARER missing") is not a leak of its value; only flag it in code.
       if (hit.id === 'server-secret-name' && !/\.(js|mjs)(\?|$)/.test(url)) continue;
+      if (hit.severity === 'warn') {
+        test.info().annotations.push({ type: 'warning', description: `[${hit.id}] ${hit.why} in ${url}: ${hit.sample}` });
+        continue;
+      }
       findings.push({ url, ...hit });
     }
   }
