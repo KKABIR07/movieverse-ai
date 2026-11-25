@@ -1,6 +1,10 @@
 # Plan WIP
 
 ## SESSION_CONTEXT_RETRIEVAL
+> **2026-11-26 DONE: LIVE rev bf7ebaf, PR #1 open (KKABIR07/movieverse-ai). Worktrees/branches cleaned. Remaining = USER:
+> delete Vercel project in dashboard, rotate TMDB token, revoke+regenerate CF origin key, merge PR #1.
+> Push/PR as KKABIR07: gh active account is sdasgarali → use `gh auth token -u KKABIR07` (see git helper in history).
+>
 > **2026-11-26 later: LIVE rev 7b557db** — Top 10 rail scroll fix (rails overflow-y-hidden; glyph overflow made the wheel
 > scroll the rail) + premium "Noir & Gold" logo/favicon/OG mark (user picked A of 3 concepts). QA 180 pass / 0 fail.
 >
@@ -147,7 +151,7 @@ and the design logo. Implement the favicon."
 - [x] 7.1 Vercel: project is in the owner's (KKABIR07) Vercel account — USER deletes it from the dashboard (2026-11-26);
       repo leftovers removed (starter SVGs, x-vercel-ip-country).
 - [x] 7.2 Real README, CLAUDE.md, CLAUDE_REFERENCE/{deployment,testing}.md; Rizuan-oci-vps/Plan_WIP.md tenant entry (2026-11-26).
-- [ ] 7.3 PR → main.
+- [x] 7.3 PR → main: https://github.com/KKABIR07/movieverse-ai/pull/1 (opened 2026-11-26; merge on user OK).
 
 ## Completed
 - [x] Clone repo into `D:\chapter 2 D\mkMovies` (2026-11-25)
