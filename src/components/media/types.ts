@@ -27,6 +27,20 @@ export type MediaInput =
   | WatchlistItem
   | MediaSummary;
 
+interface LooseMedia {
+  id?: number;
+  title?: string;
+  name?: string;
+  poster_path?: string | null;
+  backdrop_path?: string | null;
+  release_date?: string;
+  first_air_date?: string;
+  vote_average?: number;
+  vote_count?: number;
+  overview?: string;
+  genre_ids?: number[];
+}
+
 function isSummary(x: MediaInput): x is MediaSummary {
   return 'mediaType' in x && 'posterPath' in x;
 }
@@ -43,7 +57,9 @@ export function inferMediaType(item: MediaInput, override?: MediaType): MediaTyp
 
 export function toMediaSummary(item: MediaInput, override?: MediaType): MediaSummary {
   if (isSummary(item)) return override ? { ...item, mediaType: override } : item;
-  const r = item as Partial<Movie & TVShow & SearchMultiResult & WatchlistItem>;
+  // A loose read-only view: intersecting the TMDB types collapses to `never` because their
+  // `media_type` literals conflict, so describe just the fields we read.
+  const r = item as LooseMedia;
   const mediaType = inferMediaType(item, override);
   return {
     id: r.id as number,
