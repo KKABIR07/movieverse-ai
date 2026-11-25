@@ -144,8 +144,9 @@ and the design logo. Implement the favicon."
 - [ ] 6.4 Post-deploy crawl against the live domain.
 
 ## Phase 7 — Cutover & docs
-- [ ] 7.1 Remove Vercel project (CONFIRM first; only after 6.4 passes).
-- [ ] 7.2 Real README, CLAUDE.md, CLAUDE_REFERENCE/deployment.md; update Rizuan-oci-vps/Plan_WIP.md tenant list.
+- [x] 7.1 Vercel: project is in the owner's (KKABIR07) Vercel account — USER deletes it from the dashboard (2026-11-26);
+      repo leftovers removed (starter SVGs, x-vercel-ip-country).
+- [x] 7.2 Real README, CLAUDE.md, CLAUDE_REFERENCE/{deployment,testing}.md; Rizuan-oci-vps/Plan_WIP.md tenant entry (2026-11-26).
 - [ ] 7.3 PR → main.
 
 ## Completed
