@@ -16,6 +16,15 @@
 > UPDATE 3: full QA GREEN (3efdd1f): typecheck, vitest 419, build, bundle scan 0 leaks, Playwright 169 pass / 0 fail /
 > 7 viewport skips, Lighthouse home 93/100/100/100 desktop, 89 mobile; detail 98 / 86. Screenshots in
 > scratchpad/shots, local prod server on :3000. WAITING: user approval of screenshots + OK to push TMDB_BEARER → deploy.
+> UPDATE 4 (2026-11-25 ~17:15 UTC): USER APPROVED design + deploy with current TMDB token (rotate later). LIVE at
+> https://www.mkmovies.site, rev f484ccf. Pushed TMDB_BEARER/GROQ_API_KEY/YOUTUBE_API_KEY only (JWT/PG secrets generated
+> on box). First Caddy reload failed (root-run `caddy validate` created logs/caddy-access.log root-owned → 525) → fixed
+> in f484ccf (validate as caddy user). Live smoke: all routes 200 via CF, apex/http → https://www 301/308, 404s
+> noindex, headers OK, sitemap 516 URLs, AI 401 unauth, origin locked to CF, neighbours OK. Live soak 60 s 773 req
+> 0 errors: slice peak 277 MiB / 1 GiB, oom_kill 0. Disk 52 MB / 4.9 GB. NEXT: Vercel removal (CONFIRM), docs
+> (README, CLAUDE.md, CLAUDE_REFERENCE/deployment.md, Rizuan tenant list), push branch + PR → main, remove worktrees.
+> USER TODO: rotate TMDB token (then `ENV_FILE=.env.local ./scripts/push-env.sh --restart TMDB_BEARER`); revoke +
+> regenerate CF origin key. Local curl -w is broken on this PC (error 43) — use node fetch for status checks.
 >
 > **PAUSED 2026-11-25 by user ("stop we will pickup tomorrow"). RESUME HERE:**
 > `feature/oci-redesign` @ 689abe0 = MERGED: infra, backend, foundation, Postgres port (Drizzle), infra v2
