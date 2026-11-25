@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode, Ref } from 'react';
-import { cn } from './cn';
+import { cn, displayClass } from './cn';
 
 export type IconButtonVariant = 'ghost' | 'secondary' | 'primary' | 'overlay';
 export type IconButtonSize = 'sm' | 'md' | 'lg';
@@ -14,9 +14,9 @@ const variants: Record<IconButtonVariant, string> = {
 };
 
 const sizes: Record<IconButtonSize, string> = {
-  sm: 'size-9 rounded-chip [&_svg]:size-4',
-  md: 'size-11 rounded-control [&_svg]:size-5',
-  lg: 'size-13 rounded-control [&_svg]:size-6',
+  sm: 'size-9 [&_svg]:size-4',
+  md: 'size-11 [&_svg]:size-5',
+  lg: 'size-13 [&_svg]:size-6',
 };
 
 interface CommonProps {
@@ -78,11 +78,12 @@ export function IconButton({
   ...rest
 }: IconButtonProps) {
   const classes = cn(
-    'relative inline-flex shrink-0 items-center justify-center transition-colors duration-120 ease-projector',
+    displayClass(className, 'inline-flex'),
+    'relative shrink-0 items-center justify-center transition-colors duration-120 ease-projector',
     'disabled:pointer-events-none disabled:opacity-50',
     variants[variant],
     sizes[size],
-    round && 'rounded-full',
+    round ? 'rounded-full' : size === 'sm' ? 'rounded-chip' : 'rounded-control',
     className,
   );
   const title = noTitle ? undefined : label;

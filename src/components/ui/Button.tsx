@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode, Ref } from 'react';
 import { Loader2 } from 'lucide-react';
-import { cn } from './cn';
+import { cn, displayClass } from './cn';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 const base =
-  'inline-flex items-center justify-center gap-2 font-medium whitespace-nowrap select-none ' +
+  'items-center justify-center gap-2 font-medium whitespace-nowrap select-none ' +
   'transition-[background-color,border-color,color,transform] duration-120 ease-projector ' +
   'active:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50';
 
@@ -26,7 +26,7 @@ export const buttonSizes: Record<ButtonSize, string> = {
 
 /** Class string for anything that should look like a button (e.g. a custom Link). */
 export function buttonClass(variant: ButtonVariant = 'primary', size: ButtonSize = 'md', className?: string) {
-  return cn(base, buttonVariants[variant], buttonSizes[size], className);
+  return cn(displayClass(className, 'inline-flex'), base, buttonVariants[variant], buttonSizes[size], className);
 }
 
 interface CommonProps {
@@ -75,7 +75,7 @@ export function Button({
   children,
   ...rest
 }: ButtonProps) {
-  const classes = cn(buttonClass(variant, size), block && 'w-full', className);
+  const classes = cn(buttonClass(variant, size, className), block && 'w-full');
   const content = (
     <>
       {loading ? <Loader2 aria-hidden className="animate-spin" /> : leadingIcon}

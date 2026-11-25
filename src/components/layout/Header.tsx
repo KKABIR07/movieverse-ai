@@ -173,7 +173,7 @@ export function Header() {
             {signedIn ? (
               <UserMenu onLoginClick={() => openAuth('login')} />
             ) : (
-              <Button size="sm" onClick={() => openAuth('login')} className="ml-1 h-10">
+              <Button onClick={() => openAuth("login")} className="ml-1 px-3.5">
                 Sign in
               </Button>
             )}

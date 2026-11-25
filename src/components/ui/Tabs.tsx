@@ -100,11 +100,11 @@ export function Tabs<T extends string = string>({
               disabled={item.disabled}
               onClick={() => select(item.id)}
               className={cn(
-                'relative inline-flex h-11 shrink-0 items-center gap-1.5 px-4 text-caption font-medium whitespace-nowrap transition-colors',
+                'relative inline-flex shrink-0 items-center gap-1.5 px-4 text-caption font-medium whitespace-nowrap transition-colors',
                 'disabled:opacity-40 disabled:pointer-events-none',
                 appearance === 'underline'
                   ? cn(
-                      '-mb-px border-b-2',
+                      'h-11 -mb-px border-b-2',
                       selected ? 'border-accent text-fg' : 'border-transparent text-fg-muted hover:text-fg',
                     )
                   : cn('h-9 rounded-full', selected ? 'bg-fg text-ground' : 'text-fg-muted hover:text-fg'),

@@ -14,9 +14,9 @@ interface UserMenuProps {
   onLoginClick: () => void;
 }
 
-const itemClass =
-  'flex w-full min-h-11 items-center gap-3 rounded-chip px-3 text-left text-caption text-fg-secondary outline-none ' +
-  'hover:bg-surface-3 hover:text-fg focus-visible:bg-surface-3 focus-visible:text-fg';
+const itemBase =
+  'flex w-full min-h-11 items-center gap-3 rounded-chip px-3 text-left text-caption outline-none hover:bg-surface-3 focus-visible:bg-surface-3';
+const itemClass = `${itemBase} text-fg-secondary hover:text-fg focus-visible:text-fg`;
 
 /**
  * Avatar button + account menu (ARIA menu button pattern: Enter/Space/↓ open,
@@ -49,7 +49,7 @@ export function UserMenu({ onLoginClick }: UserMenuProps) {
 
   if (!user) {
     return (
-      <Button size="sm" onClick={onLoginClick} className="h-10">
+      <Button onClick={onLoginClick}>
         Sign in
       </Button>
     );
@@ -157,7 +157,7 @@ export function UserMenu({ onLoginClick }: UserMenuProps) {
               close(false);
               await logout();
             }}
-            className={cn(itemClass, 'text-danger hover:text-danger focus-visible:text-danger')}
+            className={cn(itemBase, 'text-danger')}
           >
             <LogOut aria-hidden className="size-4" /> Sign out
           </button>
