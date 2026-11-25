@@ -1,9 +1,12 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { startDb, stopDb, resetDb, makeReq, createUser } from './helpers';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { count, eq, sql } from 'drizzle-orm';
+import { startDb, stopDb, resetDb, makeReq, createUser, db } from './helpers';
 import { GET as chatGet, POST as chatPost } from '@/app/api/chat/route';
 import { GET as followsGet, POST as followsPost, DELETE as followsDelete } from '@/app/api/follows/route';
 import { GET as counts } from '@/app/api/follows/counts/route';
-import { ChatMessage, CHAT_TTL_SECONDS, Follow } from '@/lib/db/models';
+import { chatMessages, CHAT_RETENTION_DAYS, follows } from '@/lib/db/schema';
+import { maybeSweep, resetSweepThrottle, sweepChatMessages } from '@/lib/db/maintenance';
+import { mapError } from '@/lib/server/http';
 
 beforeAll(startDb);
 afterAll(stopDb);
@@ -36,9 +39,9 @@ describe('/api/chat', () => {
     expect(message).not.toHaveProperty('userId');
 
     const base = Date.now() - 60_000;
-    await ChatMessage.insertMany(
+    await db.insert(chatMessages).values(
       Array.from({ length: 60 }, (_, i) => ({
-        roomId: 'movies',
+        roomId: 'movies' as const,
         userId: b.user.id,
         userName: 'Bob',
         userInitials: 'B',
@@ -67,10 +70,59 @@ describe('/api/chat', () => {
     expect((await (await chatGet(makeReq('/api/chat?roomId=general'), undefined)).json()).messages).toEqual([]);
   });
 
-  it('has a 30-day TTL index on createdAt', async () => {
-    const idx = await ChatMessage.collection.indexes();
-    expect(idx.find((i) => i.key.createdAt === 1 && Object.keys(i.key).length === 1)?.expireAfterSeconds).toBe(CHAT_TTL_SECONDS);
-    expect(CHAT_TTL_SECONDS).toBe(30 * 24 * 3600);
+  it('`after` cursor round-trips exactly (no duplicate on the next poll)', async () => {
+    const { cookie } = await createUser();
+    const { message } = await (await chatPost(makeReq('/api/chat', { body: { text: 'one' }, cookie }), undefined)).json();
+    const next = await (await chatGet(makeReq(`/api/chat?after=${encodeURIComponent(message.createdAt)}`), undefined)).json();
+    expect(next.messages).toEqual([]);
+  });
+
+  it('30-day retention sweep removes only expired messages', async () => {
+    expect(CHAT_RETENTION_DAYS).toBe(30);
+    const { user } = await createUser();
+    const day = 24 * 3600 * 1000;
+    const mk = (text: string, ageMs: number) => ({
+      roomId: 'general' as const,
+      userId: user.id,
+      userName: 'U',
+      userInitials: 'U',
+      color: '#fff',
+      text,
+      createdAt: new Date(Date.now() - ageMs),
+    });
+    await db.insert(chatMessages).values([mk('old', 31 * day), mk('edge-old', 30 * day + 60_000), mk('recent', 29 * day), mk('new', 0)]);
+    expect(await sweepChatMessages(db)).toBe(2);
+    const left = await db.select({ text: chatMessages.text }).from(chatMessages);
+    expect(left.map((r) => r.text).sort()).toEqual(['new', 'recent']);
+
+    // opportunistic sweep: p=1 runs once, then is throttled
+    await db.insert(chatMessages).values(mk('old2', 40 * day));
+    resetSweepThrottle();
+    maybeSweep('chat', db, 1);
+    await vi.waitFor(async () => expect((await db.select({ n: count() }).from(chatMessages))[0].n).toBe(2));
+    await db.insert(chatMessages).values(mk('old3', 40 * day));
+    maybeSweep('chat', db, 1); // throttled (< 60 s since last run)
+    await new Promise((r) => setTimeout(r, 50));
+    expect((await db.select({ n: count() }).from(chatMessages))[0].n).toBe(3);
+  });
+
+  it('DB rejects unknown rooms and oversize text (CHECK → 400)', async () => {
+    const { user } = await createUser();
+    const base = { userId: user.id, userName: 'U', userInitials: 'U', color: '#fff', text: 'x' };
+    for (const bad of [
+      { roomId: 'admin' as never },
+      { roomId: 'general' as const, text: 'x'.repeat(501) },
+      { roomId: 'general' as const, text: '' },
+    ]) {
+      const err = await db.insert(chatMessages).values({ ...base, ...bad }).catch((e: unknown) => e);
+      expect(mapError(err).status).toBe(400);
+    }
+    const fk = await db
+      .insert(chatMessages)
+      .values({ ...base, roomId: 'general', userId: '00000000-0000-4000-8000-000000000000' })
+      .catch((e: unknown) => e);
+    expect(mapError(fk)).toMatchObject({ status: 404 });
+    expect(await db.execute(sql`select 1`)).toBeTruthy();
   });
 });
 
@@ -104,7 +156,8 @@ describe('/api/follows', () => {
 
     const del = await followsDelete(makeReq('/api/follows', { method: 'DELETE', body: { personId: 287 }, cookie: a.cookie }), undefined);
     expect((await del.json()).followerCount).toBe(1);
-    expect(await Follow.countDocuments({ personId: 287 })).toBe(1); // B's follow untouched (IDOR-safe)
+    const [{ n }] = await db.select({ n: count() }).from(follows).where(eq(follows.personId, 287));
+    expect(n).toBe(1); // B's follow untouched (IDOR-safe)
   });
 
   it('validation: personId int > 0, string maxes, image path, operators', async () => {

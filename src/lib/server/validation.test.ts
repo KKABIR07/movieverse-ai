@@ -91,8 +91,11 @@ describe('review schemas', () => {
     ok(reviewsQuery, { movieId: '550' });
     bad(reviewsQuery, { movieId: 'abc' });
     bad(reviewsQuery, { movieId: '-1' });
-    ok(reviewDeleteQuery, { id: '507f1f77bcf86cd799439011' });
-    bad(reviewDeleteQuery, { id: 'not-an-object-id' });
+    ok(reviewDeleteQuery, { id: '3f2b6c1e-8a4d-4c2f-9b1a-0e5d7c6b4a21' });
+    expect(reviewDeleteQuery.parse({ id: '3F2B6C1E-8A4D-4C2F-9B1A-0E5D7C6B4A21' }).id).toBe('3f2b6c1e-8a4d-4c2f-9b1a-0e5d7c6b4a21');
+    bad(reviewDeleteQuery, { id: 'not-a-uuid' });
+    bad(reviewDeleteQuery, { id: '507f1f77bcf86cd799439011' }); // legacy 24-hex ObjectId
+    bad(reviewDeleteQuery, { id: "3f2b6c1e-8a4d-4c2f-9b1a-0e5d7c6b4a21' or 1=1--" });
   });
 });
 

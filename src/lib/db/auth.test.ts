@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import { signToken, verifyToken, setAuthCookie, clearAuthCookie, initialsFor, TOKEN_TTL_SECONDS, AUTH_COOKIE } from './auth';
 
 const SECRET = 'unit-test-secret-that-is-long-enough-0123';
-const session = { userId: '507f1f77bcf86cd799439011', name: 'Ada', email: 'ada@x.io', initials: 'A', tokenVersion: 3 };
+const session = { userId: '3f2b6c1e-8a4d-4c2f-9b1a-0e5d7c6b4a21', name: 'Ada', email: 'ada@x.io', initials: 'A', tokenVersion: 3 };
 
 beforeEach(() => vi.stubEnv('JWT_SECRET', SECRET));
 afterEach(() => vi.unstubAllEnvs());
@@ -44,6 +44,9 @@ describe('JWT', () => {
     expect(verifyToken('')).toBeNull();
     const legacy = jwt.sign({ userId: session.userId, name: 'x', email: 'x', initials: 'x' }, SECRET);
     expect(verifyToken(legacy)).toBeNull();
+    // pre-Postgres tokens carried a 24-hex ObjectId subject — rejected (would never match a uuid row)
+    const objectIdSub = jwt.sign({ name: 'x', email: 'x', initials: 'x', tv: 0 }, SECRET, { subject: '507f1f77bcf86cd799439011' });
+    expect(verifyToken(objectIdSub)).toBeNull();
   });
 
   it('fails fast when JWT_SECRET is missing or short (503 ConfigError)', () => {

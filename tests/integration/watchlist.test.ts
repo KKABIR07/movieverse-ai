@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { startDb, stopDb, resetDb, makeReq, createUser } from './helpers';
+import { count, eq } from 'drizzle-orm';
+import { startDb, stopDb, resetDb, makeReq, createUser, db } from './helpers';
 import { GET, POST, DELETE } from '@/app/api/watchlist/route';
-import { Watchlist } from '@/lib/db/models';
+import { watchlistItems } from '@/lib/db/schema';
 import { WATCHLIST_MAX_ITEMS } from '@/lib/server/validation';
 
 beforeAll(startDb);
@@ -57,20 +58,40 @@ describe('/api/watchlist', () => {
 
   it(`caps at ${WATCHLIST_MAX_ITEMS} items (409 WATCHLIST_FULL)`, async () => {
     const { cookie, user } = await createUser();
-    const items = Array.from({ length: WATCHLIST_MAX_ITEMS }, (_, i) => ({
-      id: i + 1,
-      media_type: 'movie' as const,
-      poster_path: null,
-      backdrop_path: null,
-      vote_average: 0,
-      addedAt: new Date().toISOString(),
-    }));
-    await Watchlist.create({ userId: user.id, items });
+    // fill to cap-1 directly, then the 1000th goes through the API
+    await db.insert(watchlistItems).values(
+      Array.from({ length: WATCHLIST_MAX_ITEMS - 1 }, (_, i) => ({ userId: user.id, mediaType: 'movie' as const, tmdbId: i + 1 })),
+    );
+    expect((await POST(makeReq('/api/watchlist', { body: { ...movie, id: 5000 }, cookie }), undefined)).status).toBe(201);
     const res = await POST(makeReq('/api/watchlist', { body: { ...movie, id: 999999 }, cookie }), undefined);
     expect(res.status).toBe(409);
     expect((await res.json()).code).toBe('WATCHLIST_FULL');
     // an item already present is still a no-op 200, not 409
     expect((await POST(makeReq('/api/watchlist', { body: { id: 1, media_type: 'movie' }, cookie }), undefined)).status).toBe(200);
+    const [{ n }] = await db.select({ n: count() }).from(watchlistItems).where(eq(watchlistItems.userId, user.id));
+    expect(n).toBe(WATCHLIST_MAX_ITEMS);
+  });
+
+  it('concurrent adds never exceed the cap (per-user row lock)', async () => {
+    const { cookie, user } = await createUser();
+    await db.insert(watchlistItems).values(
+      Array.from({ length: WATCHLIST_MAX_ITEMS - 2 }, (_, i) => ({ userId: user.id, mediaType: 'tv' as const, tmdbId: i + 1 })),
+    );
+    const results = await Promise.all(
+      [1, 2, 3, 4].map((i) => POST(makeReq('/api/watchlist', { body: { id: 90_000 + i, media_type: 'movie' }, cookie }), undefined)),
+    );
+    expect(results.map((r) => r.status).sort()).toEqual([201, 201, 409, 409]);
+    const [{ n }] = await db.select({ n: count() }).from(watchlistItems).where(eq(watchlistItems.userId, user.id));
+    expect(n).toBe(WATCHLIST_MAX_ITEMS);
+  });
+
+  it('returns vote_average as sent (float4 rounding hidden) and keeps empty release dates', async () => {
+    const { cookie } = await createUser();
+    const r = await POST(makeReq('/api/watchlist', { body: { ...movie, vote_average: 8.438, release_date: '' }, cookie }), undefined);
+    const [item] = (await r.json()).items;
+    expect(item.vote_average).toBe(8.438);
+    expect(item.release_date).toBe('');
+    expect(item.addedAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
   });
 
   it('DELETE removes by id + media_type (body or query)', async () => {
