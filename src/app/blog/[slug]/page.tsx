@@ -10,7 +10,10 @@ import { blogPostingJsonLd, formatPostDate, neighbours } from '@/components/blog
 
 type Props = { params: Promise<{ slug: string }> };
 
-/** Every post is pre-rendered at build time; unknown slugs 404. */
+/**
+ * Every post is pre-rendered at build time. Unknown slugs get a real HTTP 404 (with dynamic params
+ * the root loading.tsx would stream a 200 before notFound() runs). Next logs "NoFallbackError" for these; it is expected.
+ */
 export const dynamicParams = false;
 
 export function generateStaticParams() {
