@@ -8,6 +8,11 @@
 > UPDATE: Pages B MERGED (e83af9d, 417 tests, lint 0/0). Step 2 DONE (7e5350a: legacy comps + three deps gone, no-secrets
 > build OK). Blog stale claims fixed (16c1324). Waiting on QA agent → merge → full e2e + screenshots → user approval.
 > Known: /person|movie|tv/<bad id> = 200 + noindex (loading.tsx streams first), not a hard 404.
+> UPDATE 2: QA MERGED. QA bugs fixed (162905e): /api/auth/me was in the 10/min login bucket → 11th page load signed
+> users out; Groq llama-3.3-70b retired → openai/gpt-oss-120b (reasoning_effort low, GROQ_MODEL override); chat
+> aria-controls; pagination contrast; password hint 6→8. 419 unit tests, lint clean. Full `node scripts/qa/run-all.mjs`
+> running (throwaway pg container mkmovies-qa-pg :5434, E2E_PAGES_B=1, dns shim in scratchpad). Log: scratchpad/qa-run.log.
+> Soak note from QA: uncapped heap grew 124→894 MB in 90 s → re-soak on the box with --docker mkmovies-web.
 >
 > **PAUSED 2026-11-25 by user ("stop we will pickup tomorrow"). RESUME HERE:**
 > `feature/oci-redesign` @ 689abe0 = MERGED: infra, backend, foundation, Postgres port (Drizzle), infra v2
