@@ -2,8 +2,12 @@ import jwt from 'jsonwebtoken';
 import type { NextRequest, NextResponse } from 'next/server';
 import { getJwtSecret, isProduction } from '@/lib/server/env';
 import { unauthorized } from '@/lib/server/errors';
-import { connectDB } from './mongoose';
-import { User } from './models';
+import { eq } from 'drizzle-orm';
+import { getDb } from './client';
+import { users } from './schema';
+
+/** Canonical (lower-case, hyphenated) UUID — the users.id format. */
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Session = HS256 JWT in an httpOnly cookie.
@@ -48,7 +52,7 @@ export function verifyToken(token: string): Session | null {
     const c = jwt.verify(token, secret, { algorithms: [ALG] }) as Partial<Claims>;
     if (
       typeof c.sub !== 'string' ||
-      !/^[a-f\d]{24}$/i.test(c.sub) ||
+      !UUID_RE.test(c.sub) ||
       typeof c.tv !== 'number' ||
       typeof c.name !== 'string' ||
       typeof c.email !== 'string' ||
@@ -74,9 +78,12 @@ async function currentTokenVersion(userId: string): Promise<number | null> {
   const now = Date.now();
   const hit = tvCache.get(userId);
   if (hit && hit.exp > now) return hit.tv;
-  await connectDB();
-  const u = await User.findById(userId).select('tokenVersion').lean<{ tokenVersion?: number }>();
-  const tv = u ? (u.tokenVersion ?? 0) : null;
+  const [u] = await getDb()
+    .select({ tokenVersion: users.tokenVersion })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const tv = u ? u.tokenVersion : null;
   if (tvCache.size >= TV_CACHE_MAX) tvCache.delete(tvCache.keys().next().value as string);
   tvCache.set(userId, { tv, exp: now + TV_CACHE_MS });
   return tv;
@@ -166,8 +173,19 @@ export interface UserDTO {
   joinedAt: string | null;
 }
 
+/** Columns needed for a UserDTO (never includes password_hash). */
+export const userPublicColumns = {
+  id: users.id,
+  name: users.name,
+  email: users.email,
+  initials: users.initials,
+  avatar: users.avatar,
+  tokenVersion: users.tokenVersion,
+  createdAt: users.createdAt,
+};
+
 export function toUserDTO(u: {
-  _id: { toString(): string };
+  id: string;
   name: string;
   email: string;
   initials: string;
@@ -175,7 +193,7 @@ export function toUserDTO(u: {
   createdAt?: Date | string | null;
 }): UserDTO {
   return {
-    id: u._id.toString(),
+    id: u.id,
     name: u.name,
     email: u.email,
     initials: u.initials,
