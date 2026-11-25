@@ -106,10 +106,10 @@ describe('watchlist store (keyed by media type)', () => {
     expect(S.useWatchlistStore.getState().hasInAny(5, 'tv')).toBe(false);
   });
 
-  it('persists with version 3', () => {
+  it('persists with version 4', () => {
     S.useWatchlistStore.getState().add(item(1, 'movie'));
     const raw = JSON.parse(storage.getItem('mkmovies-watchlist') ?? '{}');
-    expect(raw.version).toBe(3);
+    expect(raw.version).toBe(4);
     expect(raw.state.lists[0].items[0]).toMatchObject({ id: 1, media_type: 'movie' });
   });
 
@@ -180,6 +180,37 @@ describe('logout / account switch clears per-user data', () => {
     expect(storage.getItem('mkmovies-owner')).toBe('user-a');
   });
 
+  it('authStore.logout() wipes data even when no owner was recorded (storage blocked)', async () => {
+    storage.removeItem('mkmovies-owner');
+    seed();
+    const { useAuthStore } = await import('./authStore');
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response('{"ok":true}', { status: 200 })) as typeof fetch;
+    try {
+      await useAuthStore.getState().logout();
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    expect(useAuthStore.getState().status).toBe('anonymous');
+    isEmpty();
+  });
+
+  it('authStore.logoutAll() keeps data and throws when the server refuses', async () => {
+    seed();
+    const { useAuthStore } = await import('./authStore');
+    useAuthStore.setState({ status: 'authenticated' });
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response('{"error":"DB down"}', { status: 503 })) as typeof fetch;
+    try {
+      await expect(useAuthStore.getState().logoutAll()).rejects.toThrow('DB down');
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    expect(useAuthStore.getState().status).toBe('authenticated');
+    expect(S.useWatchlistStore.getState().getActiveItems()).toHaveLength(1);
+    useAuthStore.setState({ status: 'unknown' });
+  });
+
   it('adopts unowned (pre-login) data on first sign-in', () => {
     storage.removeItem('mkmovies-owner');
     seed();
@@ -195,5 +226,74 @@ describe('ui store', () => {
     expect(S.useUIStore.getState()).toMatchObject({ authOpen: true, authTab: 'signup' });
     S.useUIStore.getState().closeAuth();
     expect(S.useUIStore.getState().authOpen).toBe(false);
+  });
+});
+
+describe('ratings store', () => {
+  it('migrates v0 numeric keys to movie:<id> and keeps tv separate', () => {
+    expect(S.migrateRatings({ ratings: { '550': 8, bad: 3, '12': 'x' } }, 0)).toEqual({ ratings: { 'movie:550': 8 } });
+    S.useRatingsStore.getState().rate(1399, 9, 'tv');
+    S.useRatingsStore.getState().rate(1399, 4, 'movie');
+    expect(S.useRatingsStore.getState().getRating(1399, 'tv')).toBe(9);
+    expect(S.useRatingsStore.getState().getRating(1399)).toBe(4);
+    S.useRatingsStore.getState().clearRating(1399, 'tv');
+    expect(S.useRatingsStore.getState().getRating(1399, 'tv')).toBeNull();
+  });
+});
+
+describe('server-backed watchlist (signed in)', () => {
+  type A = typeof import('./authStore');
+  let Auth: A;
+  const realFetch = globalThis.fetch;
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  beforeAll(async () => {
+    Auth = await import('./authStore');
+  });
+
+  const signIn = (id = 'u1') =>
+    Auth.useAuthStore.setState({
+      status: 'authenticated',
+      user: { id, name: 'U', email: 'u@x.y', avatar: null, initials: 'U', joinedAt: '2024-01-01' },
+    });
+
+  it('rolls back an optimistic add when the API fails', async () => {
+    signIn();
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: 'down', code: 'DB_UNAVAILABLE' }), { status: 503 })) as typeof fetch;
+    try {
+      S.useWatchlistStore.getState().add(item(10, 'tv'));
+      expect(S.useWatchlistStore.getState().has(10, 'tv')).toBe(true);
+      await flush();
+      await flush();
+      expect(S.useWatchlistStore.getState().has(10, 'tv')).toBe(false);
+    } finally {
+      globalThis.fetch = realFetch;
+      Auth.useAuthStore.setState({ status: 'unknown', user: null });
+    }
+  });
+
+  it('merges local items into the account once on login, then marks the merge', async () => {
+    S.useWatchlistStore.getState().add(item(1, 'movie'));
+    signIn('u2');
+    const calls: string[] = [];
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      calls.push(init?.method ?? 'GET');
+      if ((init?.method ?? 'GET') === 'GET') return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      const body = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ items: [body] }), { status: 201 });
+    }) as typeof fetch;
+    try {
+      await S.useWatchlistStore.getState().syncFromServer('u2');
+      expect(calls).toEqual(['GET', 'POST']);
+      expect(S.useWatchlistStore.getState().mergedFor).toBe('u2');
+      expect(S.useWatchlistStore.getState().has(1, 'movie')).toBe(true);
+      calls.length = 0;
+      await S.useWatchlistStore.getState().syncFromServer('u2');
+      expect(calls).toEqual(['GET']); // no second merge
+    } finally {
+      globalThis.fetch = realFetch;
+      Auth.useAuthStore.setState({ status: 'unknown', user: null });
+    }
   });
 });

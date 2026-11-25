@@ -1,217 +1,154 @@
 import type { Metadata } from 'next';
-import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { BLOG_POSTS, getPost, getRelatedPosts } from '@/data/blog-posts';
-import { Clock, Calendar, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
+import { JsonLd } from '@/components/detail/JsonLdScript';
+import { Button } from '@/components/ui/Button';
+import { chipClass } from '@/components/ui/Chip';
+import { blogPostingJsonLd, formatPostDate, neighbours } from '@/components/blog/blog';
 
-interface Props {
-  params: Promise<{ slug: string }>;
-}
+type Props = { params: Promise<{ slug: string }> };
 
-// Pre-render all blog posts at build time
+/**
+ * Every post is pre-rendered at build time. Unknown slugs get a real HTTP 404 (with dynamic params
+ * the root loading.tsx would stream a 200 before notFound() runs). Next logs "NoFallbackError" for these; it is expected.
+ */
+export const dynamicParams = false;
+
 export function generateStaticParams() {
   return BLOG_POSTS.map((p) => ({ slug: p.slug }));
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { slug } = await params;
-  const post = getPost(slug);
-  if (!post) return {};
-
+  const post = getPost((await params).slug);
+  if (!post) return { title: 'Article not found', robots: { index: false } };
+  const path = `/blog/${post.slug}`;
   return {
     title: post.title,
     description: post.description,
     keywords: post.keywords,
+    alternates: { canonical: path },
     openGraph: {
+      type: 'article',
+      siteName: 'mkmovies',
       title: post.title,
       description: post.description,
-      type: 'article',
-      url: `https://mkmovies.site/blog/${post.slug}`,
+      url: path,
       publishedTime: post.date,
+      section: post.category,
     },
-    alternates: { canonical: `https://mkmovies.site/blog/${post.slug}` },
+    twitter: { card: 'summary_large_image', title: post.title, description: post.description },
   };
 }
 
-function formatDate(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric',
-  });
-}
-
 export default async function BlogPostPage({ params }: Props) {
-  const { slug } = await params;
-  const post = getPost(slug);
+  const post = getPost((await params).slug);
   if (!post) notFound();
 
-  const related = getRelatedPosts(slug, post.category);
-  const currentIndex = BLOG_POSTS.findIndex((p) => p.slug === slug);
-  const prev = currentIndex > 0 ? BLOG_POSTS[currentIndex - 1] : null;
-  const next = currentIndex < BLOG_POSTS.length - 1 ? BLOG_POSTS[currentIndex + 1] : null;
+  const related = getRelatedPosts(post.slug, post.category).slice(0, 3);
+  const { older, newer } = neighbours(BLOG_POSTS, post.slug);
 
   return (
-    <div className="min-h-screen pt-20 pb-20">
-      <div className="container mx-auto px-4 md:px-8 max-w-3xl">
-
-        {/* ── Breadcrumb ── */}
-        <nav className="flex items-center gap-2 text-xs text-[var(--text-muted)] pt-8 pb-10" aria-label="Breadcrumb">
-          <Link href="/" className="hover:text-[var(--text-primary)] transition-colors">Home</Link>
-          <span>/</span>
-          <Link href="/blog" className="hover:text-[var(--text-primary)] transition-colors">Blog</Link>
-          <span>/</span>
-          <span className="text-[var(--text-primary)] truncate max-w-[200px]">{post.title}</span>
+    <div className="px-gutter pb-16">
+      <JsonLd data={blogPostingJsonLd(post)} />
+      <div className="mx-auto max-w-3xl">
+        <nav aria-label="Breadcrumb" className="pb-8 pt-8 md:pt-12">
+          <ol className="flex min-w-0 items-center gap-2 text-caption text-fg-muted">
+            <li>
+              <Link href="/" className="hover:text-fg">
+                Home
+              </Link>
+            </li>
+            <li aria-hidden>/</li>
+            <li>
+              <Link href="/blog" className="hover:text-fg">
+                Blog
+              </Link>
+            </li>
+            <li aria-hidden>/</li>
+            <li aria-current="page" className="min-w-0 truncate text-fg-secondary">
+              {post.title}
+            </li>
+          </ol>
         </nav>
 
-        {/* ── Header ── */}
-        <header className="mb-10">
-          <div className="flex items-center gap-3 mb-5">
-            <span
-              className="text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest"
-              style={{ background: `${post.categoryColor}20`, color: post.categoryColor }}
-            >
-              {post.category}
-            </span>
-            <span className="text-xs text-[var(--text-muted)] flex items-center gap-1">
-              <Clock size={11} /> {post.readTime} min read
-            </span>
-          </div>
+        <article>
+          <header className="border-b border-line pb-8">
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-caption text-fg-muted">
+              <span className={chipClass(false, 'sm', 'pointer-events-none')}>{post.category}</span>
+              <span className="inline-flex items-center gap-1 tabular">
+                <Clock aria-hidden className="size-3.5" /> {post.readTime} min read
+              </span>
+            </p>
+            <h1 className="mt-4 text-h1 text-balance text-fg">{post.title}</h1>
+            <p className="mt-4 text-body-lg text-fg-secondary text-pretty">{post.description}</p>
+            <p className="mt-6 text-caption text-fg-muted">
+              By <span className="font-medium text-fg-secondary">{post.author}</span> ·{' '}
+              <time dateTime={post.date}>{formatPostDate(post.date)}</time>
+            </p>
+          </header>
 
-          <h1 className="text-3xl md:text-4xl font-black text-[var(--text-primary)] leading-tight mb-5">
-            {post.title}
-          </h1>
+          {/* Authored in src/data/blog-posts.ts (static, no user input). */}
+          <div className="prose-mkmovies mt-8" dangerouslySetInnerHTML={{ __html: post.content }} />
+        </article>
 
-          <p className="text-lg text-[var(--text-secondary)] leading-relaxed mb-6">
-            {post.description}
-          </p>
+        {(older || newer) && (
+          <nav aria-label="More articles" className="mt-14 grid gap-3 border-t border-line pt-8 sm:grid-cols-2">
+            {older ? (
+              <Link href={`/blog/${older.slug}`} className="group rounded-panel border border-line bg-surface-1 p-5 hover:border-line-strong">
+                <span className="flex items-center gap-1 text-caption text-fg-muted">
+                  <ChevronLeft aria-hidden className="size-4" /> Older
+                </span>
+                <span className="mt-1.5 line-clamp-2 block text-body font-medium text-fg group-hover:text-accent">{older.title}</span>
+              </Link>
+            ) : (
+              <span className="hidden sm:block" />
+            )}
+            {newer && (
+              <Link
+                href={`/blog/${newer.slug}`}
+                className="group rounded-panel border border-line bg-surface-1 p-5 text-right hover:border-line-strong"
+              >
+                <span className="flex items-center justify-end gap-1 text-caption text-fg-muted">
+                  Newer <ChevronRight aria-hidden className="size-4" />
+                </span>
+                <span className="mt-1.5 line-clamp-2 block text-body font-medium text-fg group-hover:text-accent">{newer.title}</span>
+              </Link>
+            )}
+          </nav>
+        )}
 
-          <div className="flex items-center gap-4 pb-8 border-b border-[var(--border)]">
-            <div className="w-9 h-9 rounded-full bg-[var(--accent-primary)] flex items-center justify-center flex-shrink-0">
-              <BookOpen size={14} className="text-white" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-[var(--text-primary)]">{post.author}</p>
-              <p className="text-xs text-[var(--text-muted)] flex items-center gap-1">
-                <Calendar size={10} /> {formatDate(post.date)}
-              </p>
-            </div>
-          </div>
-        </header>
-
-        {/* ── Article body ── */}
-        <article
-          className="prose-mkmovies"
-          // Content is authored by us — no user input, safe to render
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{ __html: post.content }}
-        />
-
-        {/* ── Prev / Next ── */}
-        <nav className="mt-16 pt-8 border-t border-[var(--border)] grid grid-cols-2 gap-4" aria-label="Post navigation">
-          {prev ? (
-            <Link
-              href={`/blog/${prev.slug}`}
-              className="group glass rounded-2xl p-5 border border-[var(--border)] hover:border-[var(--accent-primary)]/40 transition-all"
-            >
-              <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] mb-2">
-                <ChevronLeft size={13} /> Previous
-              </div>
-              <p className="text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-primary)] transition-colors line-clamp-2">
-                {prev.title}
-              </p>
-            </Link>
-          ) : <div />}
-
-          {next ? (
-            <Link
-              href={`/blog/${next.slug}`}
-              className="group glass rounded-2xl p-5 border border-[var(--border)] hover:border-[var(--accent-primary)]/40 transition-all text-right"
-            >
-              <div className="flex items-center justify-end gap-2 text-xs text-[var(--text-muted)] mb-2">
-                Next <ChevronRight size={13} />
-              </div>
-              <p className="text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-primary)] transition-colors line-clamp-2">
-                {next.title}
-              </p>
-            </Link>
-          ) : <div />}
-        </nav>
-
-        {/* ── Related posts ── */}
         {related.length > 0 && (
-          <section className="mt-16">
-            <h2 className="text-lg font-bold text-[var(--text-primary)] mb-6">Related articles</h2>
-            <div className="space-y-4">
+          <section aria-labelledby="related-title" className="mt-14">
+            <h2 id="related-title" className="mb-4 text-h2 text-fg">
+              Related articles
+            </h2>
+            <ul className="divide-y divide-line overflow-hidden rounded-panel border border-line bg-surface-1">
               {related.map((r) => (
-                <Link
-                  key={r.slug}
-                  href={`/blog/${r.slug}`}
-                  className="group flex items-start gap-4 glass rounded-2xl p-5 border border-[var(--border)] hover:border-[var(--accent-primary)]/40 transition-all"
-                >
-                  <div
-                    className="w-1 self-stretch rounded-full flex-shrink-0"
-                    style={{ background: r.categoryColor }}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--accent-primary)] transition-colors line-clamp-1 mb-1">
-                      {r.title}
-                    </p>
-                    <p className="text-xs text-[var(--text-muted)] line-clamp-2">{r.description}</p>
-                  </div>
-                  <ChevronRight size={14} className="text-[var(--text-muted)] flex-shrink-0 mt-0.5 group-hover:text-[var(--accent-primary)] group-hover:translate-x-0.5 transition-all" />
-                </Link>
+                <li key={r.slug}>
+                  <Link href={`/blog/${r.slug}`} className="group flex items-start gap-3 px-5 py-4 hover:bg-surface-2">
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-body font-medium text-fg group-hover:text-accent">{r.title}</span>
+                      <span className="mt-0.5 line-clamp-2 block text-caption text-fg-secondary">{r.description}</span>
+                    </span>
+                    <ChevronRight aria-hidden className="mt-1 size-4 shrink-0 text-fg-muted" />
+                  </Link>
+                </li>
               ))}
-            </div>
+            </ul>
           </section>
         )}
 
-        {/* ── CTA ── */}
-        <div className="mt-16 glass rounded-3xl border border-[var(--accent-primary)]/20 p-8 text-center">
-          <p className="text-base font-bold text-[var(--text-primary)] mb-2">
-            Ready to find your next watch?
-          </p>
-          <p className="text-sm text-[var(--text-muted)] mb-5">
-            Browse 900,000+ movies and TV shows on mkmovies — free, no signup required.
-          </p>
-          <Link
-            href="/trending"
-            className="inline-flex items-center gap-2 px-6 py-2.5 bg-[var(--accent-primary)] text-white font-semibold rounded-xl hover:bg-[var(--accent-secondary)] transition-colors text-sm"
-          >
-            Explore mkmovies <ChevronRight size={14} />
-          </Link>
-        </div>
-
-        {/* ── Schema.org structured data ── */}
-        <script
-          type="application/ld+json"
-          // eslint-disable-next-line react/no-danger
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              '@context': 'https://schema.org',
-              '@type': 'BlogPosting',
-              headline: post.title,
-              description: post.description,
-              datePublished: post.date,
-              dateModified: post.date,
-              url: `https://mkmovies.site/blog/${post.slug}`,
-              keywords: post.keywords.join(', '),
-              author: {
-                '@type': 'Organization',
-                name: 'mkmovies Editorial',
-                url: 'https://mkmovies.site',
-              },
-              publisher: {
-                '@type': 'Organization',
-                name: 'mkmovies',
-                url: 'https://mkmovies.site',
-                logo: { '@type': 'ImageObject', url: 'https://mkmovies.site/icon' },
-              },
-              mainEntityOfPage: {
-                '@type': 'WebPage',
-                '@id': `https://mkmovies.site/blog/${post.slug}`,
-              },
-            }),
-          }}
-        />
+        <section className="mt-14 flex flex-col items-start gap-4 rounded-panel border border-line bg-surface-1 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-h3 text-fg">Find your next watch</h2>
+            <p className="mt-1 text-body text-fg-secondary">Browse what is trending this week, then save it to your watchlist.</p>
+          </div>
+          <Button href="/trending" trailingIcon={<ChevronRight />}>
+            See what is trending
+          </Button>
+        </section>
       </div>
     </div>
   );
