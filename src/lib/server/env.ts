@@ -4,7 +4,7 @@
  * required value throws a ConfigError (→ HTTP 503 NOT_CONFIGURED) the first time it is used.
  *
  * Server-only vars: TMDB_BEARER (required, v4 read token), TMDB_API_KEY (optional v3 fallback),
- * MONGODB_URI, JWT_SECRET (>= 32 chars), GROQ_API_KEY (optional feature), YOUTUBE_API_KEY (optional feature).
+ * DATABASE_URL (postgres://…), JWT_SECRET (>= 32 chars), GROQ_API_KEY (optional feature), YOUTUBE_API_KEY (optional feature).
  * Public: NEXT_PUBLIC_SITE_URL.
  */
 import { ConfigError } from './errors';
@@ -37,11 +37,22 @@ export function isTmdbConfigured(): boolean {
   }
 }
 
-export function getMongoUri(): string {
-  const uri = read('MONGODB_URI');
-  if (!uri) throw new ConfigError('MONGODB_URI', 'missing');
-  if (!/^mongodb(\+srv)?:\/\//.test(uri)) throw new ConfigError('MONGODB_URI', 'must start with mongodb:// or mongodb+srv://');
-  return uri;
+/** PostgreSQL connection string (postgres:// or postgresql://). */
+export function getDatabaseUrl(): string {
+  const url = read('DATABASE_URL');
+  if (!url) throw new ConfigError('DATABASE_URL', 'missing');
+  if (!/^postgres(ql)?:\/\//.test(url)) throw new ConfigError('DATABASE_URL', 'must start with postgres:// or postgresql://');
+  return url;
+}
+
+/** True when DATABASE_URL is present and well-formed (never throws). */
+export function isDatabaseConfigured(): boolean {
+  try {
+    getDatabaseUrl();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function getJwtSecret(): string {
