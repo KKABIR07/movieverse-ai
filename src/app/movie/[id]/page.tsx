@@ -1,302 +1,235 @@
-'use client';
-
-import { use } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import Image from 'next/image';
+import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import Link from 'next/link';
-import {
-  Play, Star, Clock, Calendar, BookmarkPlus, BookmarkCheck,
-  Globe, ChevronRight, ExternalLink
-} from 'lucide-react';
-import { tmdb, tmdbImage, tmdbBackdrop, formatRuntime, formatYear, getTrailerKey, getRatingColor } from '@/lib/tmdb';
-import { useWatchlistStore, useRatingsStore } from '@/store';
+import { notFound } from 'next/navigation';
+import { connection } from 'next/server';
+import { cache } from 'react';
+import { Clapperboard } from 'lucide-react';
+import { getMovie, MOVIE_APPEND } from '@/lib/tmdb/server';
+import { formatCount, formatDate, formatRuntime, formatYear } from '@/lib/format';
+import type { Movie } from '@/types/tmdb';
+import { MediaGrid } from '@/components/media/MediaGrid';
+import { toMediaSummary } from '@/components/media/types';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Tabs } from '@/components/ui/Tabs';
 import { ReviewSection } from '@/components/movie/ReviewSection';
-import { HorizontalScroll } from '@/components/movie/HorizontalScroll';
 import { YouTubeSection } from '@/components/movie/YouTubeSection';
-import { MovieDetailSkeleton } from '@/components/ui/Skeleton';
-import { RatingBadge } from '@/components/ui/StarRating';
+import { CertBadge, DetailHero } from '@/components/detail/DetailHero';
+import { JsonLd } from '@/components/detail/JsonLdScript';
+import { movieJsonLd } from '@/components/detail/jsonld';
+import { regionFromHeaders } from '@/components/detail/region';
+import { ScorePanel } from '@/components/detail/ScorePanel';
+import { CastRail, DetailSection, FactsCard, PeopleGrid, Prose } from '@/components/detail/Sections';
+import { VideoGrid } from '@/components/detail/Videos';
+import { pickTrailer, pickVideos } from '@/components/detail/videoUtils';
+import { WhereToWatch } from '@/components/detail/WhereToWatch';
+import { backdropSrc } from '@/components/media/tmdbImage';
+import { clampDescription, metadataBase, parseId } from '@/components/detail/seo';
 
-export default function MoviePage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
-  const movieId = parseInt(id, 10);
+type ReleaseDates = { results?: { iso_3166_1: string; release_dates: { certification: string; type: number }[] }[] };
+type MovieDetail = Movie & { release_dates?: ReleaseDates };
 
-  const { data: movie, isLoading, error } = useQuery({
-    queryKey: ['movie', movieId],
-    queryFn: () => tmdb.movie.detail(movieId),
-    enabled: !isNaN(movieId),
-  });
+type Props = { params: Promise<{ id: string }> };
 
-  const { add, remove, has } = useWatchlistStore();
-  const { getRating } = useRatingsStore();
-  const inWatchlist = has(movieId);
-  const userRating = getRating(movieId);
+/** One TMDB request per render (generateMetadata + page share it). */
+const loadMovie = cache(async (id: number) => (await getMovie(id, `${MOVIE_APPEND},release_dates`)) as MovieDetail | null);
 
-  if (isLoading) return <MovieDetailSkeleton />;
-  if (error || !movie) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-[var(--text-muted)]">
-        <div className="text-center">
-          <p className="text-5xl mb-4">🎬</p>
-          <h1 className="text-xl font-bold text-[var(--text-primary)] mb-2">Movie not found</h1>
-          <Link href="/" className="text-[var(--accent-primary)] hover:underline">Go home</Link>
-        </div>
-      </div>
-    );
+function certification(m: MovieDetail, region: string): { value: string; region: string } | null {
+  const results = m.release_dates?.results ?? [];
+  for (const r of [region, 'US']) {
+    const entry = results.find((x) => x.iso_3166_1 === r);
+    const dates = (entry?.release_dates ?? []).filter((d) => d.certification?.trim());
+    const best = dates.find((d) => d.type === 3) ?? dates[0];
+    if (best) return { value: best.certification.trim(), region: r };
   }
+  return null;
+}
 
-  const trailerKey = getTrailerKey(movie.videos);
-  const director = movie.credits?.crew?.find((c) => c.job === 'Director');
-  const cast = movie.credits?.cast?.slice(0, 12) ?? [];
-  const watchProviders = (movie as unknown as Record<string, unknown>)['watch/providers'] as { results?: { US?: { link: string; flatrate?: { provider_id: number; provider_name: string; logo_path: string }[]; rent?: { provider_id: number; provider_name: string; logo_path: string }[]; buy?: { provider_id: number; provider_name: string; logo_path: string }[] } } } | undefined;
-  const usProviders = watchProviders?.results?.US;
+const money = (n: number | undefined) => (n && n > 0 ? `$${formatCount(n)}` : null);
 
-  const handleWatchlist = () => {
-    if (inWatchlist) {
-      remove(movie.id);
-    } else {
-      add({ id: movie.id, title: movie.title, poster_path: movie.poster_path, release_date: movie.release_date, vote_average: movie.vote_average, media_type: 'movie' });
-    }
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  await connection();
+  const id = parseId((await params).id);
+  const movie = id ? await loadMovie(id) : null;
+  if (!movie) return { title: 'Movie not found', robots: { index: false } };
+  const year = formatYear(movie.release_date, '');
+  const title = year ? `${movie.title} (${year})` : movie.title;
+  const description = clampDescription(movie.overview) || `${movie.title}: cast, trailers, reviews and where to watch.`;
+  const image = backdropSrc(movie.backdrop_path);
+  return {
+    metadataBase,
+    title,
+    description,
+    alternates: { canonical: `/movie/${movie.id}` },
+    openGraph: {
+      type: 'video.movie',
+      title,
+      description,
+      url: `/movie/${movie.id}`,
+      images: image ? [{ url: image, width: 1280, height: 720, alt: movie.title }] : undefined,
+    },
+    twitter: { card: 'summary_large_image', title, description, images: image ? [image] : undefined },
   };
+}
+
+export default async function MoviePage({ params }: Props) {
+  const id = parseId((await params).id);
+  if (!id) notFound();
+  const [movie, h] = await Promise.all([loadMovie(id), headers()]);
+  if (!movie) notFound();
+
+  const region = regionFromHeaders((n) => h.get(n));
+  const media = toMediaSummary(movie, 'movie');
+  const cert = certification(movie, region);
+  const directors = (movie.credits?.crew ?? []).filter((c) => c.job === 'Director');
+  const cast = [...(movie.credits?.cast ?? [])].sort((a, b) => a.order - b.order);
+  const keyCrew = (movie.credits?.crew ?? [])
+    .filter((c) => ['Director', 'Screenplay', 'Writer', 'Novel', 'Producer', 'Original Music Composer', 'Director of Photography'].includes(c.job))
+    .slice(0, 18);
+  const videos = pickVideos(movie.videos?.results, 24);
+  const trailer = pickTrailer(movie.videos?.results);
+  const recs = (movie.recommendations?.results?.length ? movie.recommendations.results : movie.similar?.results) ?? [];
+  const providers = movie['watch/providers']?.results?.[region] ?? null;
+  const year = formatYear(movie.release_date, '');
+
+  const overview = (
+    <div className="space-y-10">
+      <DetailSection title="Overview" id="overview-title" srOnlyTitle>
+        <Prose text={movie.overview} empty="No overview is available for this title yet." />
+      </DetailSection>
+      <CastRail people={cast.slice(0, 15)} />
+      {videos.length > 0 && (
+        <DetailSection title="Trailers & clips" id="clips-title">
+          <VideoGrid videos={videos.slice(0, 3)} />
+        </DetailSection>
+      )}
+    </div>
+  );
+
+  const tabs = [
+    { id: 'overview', label: 'Overview', panel: overview },
+    {
+      id: 'cast',
+      label: 'Cast',
+      count: cast.length || undefined,
+      panel: (
+        <div className="space-y-10">
+          <DetailSection title="Cast" id="cast-title">
+            {cast.length ? <PeopleGrid people={cast.slice(0, 48)} label="Cast" /> : <p className="text-fg-muted">No cast information yet.</p>}
+          </DetailSection>
+          {keyCrew.length > 0 && (
+            <DetailSection title="Crew" id="crew-title">
+              <PeopleGrid people={keyCrew} label="Crew" />
+            </DetailSection>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'videos',
+      label: 'Videos',
+      count: videos.length || undefined,
+      panel: (
+        <div className="space-y-10">
+          {videos.length ? (
+            <DetailSection title="Videos" id="videos-title" srOnlyTitle>
+              <VideoGrid videos={videos} />
+            </DetailSection>
+          ) : (
+            <EmptyState compact icon={<Clapperboard />} title="No videos yet" />
+          )}
+          <YouTubeSection query={`${movie.title} ${year}`.trim()} title={movie.title} />
+        </div>
+      ),
+    },
+    {
+      id: 'reviews',
+      label: 'Reviews',
+      panel: <ReviewSection movieId={movie.id} movieTitle={movie.title} moviePoster={movie.poster_path} />,
+    },
+    {
+      id: 'similar',
+      label: 'Similar',
+      panel: (
+        <DetailSection title={movie.recommendations?.results?.length ? 'Recommended' : 'Similar titles'} id="similar-title">
+          <MediaGrid items={recs.slice(0, 18)} mediaType="movie" label={`Titles similar to ${movie.title}`} empty={<p className="text-fg-muted">Nothing similar found yet.</p>} />
+        </DetailSection>
+      ),
+    },
+  ];
 
   return (
-    <div className="min-h-screen">
-      {/* Backdrop hero */}
-      <div className="relative h-[55vh] min-h-[400px] overflow-hidden">
-        {movie.backdrop_path && (
-          <Image
-            src={tmdbBackdrop(movie.backdrop_path)}
-            alt={movie.title}
-            fill
-            priority
-            className="object-cover opacity-35"
-            sizes="100vw"
-          />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-primary)] via-[var(--bg-primary)]/40 to-black/20" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-primary)] via-transparent to-transparent" />
-      </div>
-
-      {/* Main content */}
-      <div className="container mx-auto px-4 md:px-8 -mt-64 relative z-10">
-        <div className="flex flex-col md:flex-row gap-8">
-          {/* Poster */}
-          <div className="flex-shrink-0 mx-auto md:mx-0 w-48 md:w-64">
-            <div className="relative aspect-[2/3] rounded-2xl overflow-hidden shadow-[0_24px_48px_rgba(0,0,0,0.8)] ring-1 ring-white/10">
-              <Image
-                src={tmdbImage(movie.poster_path, 'w500')}
-                alt={movie.title}
-                fill
-                className="object-cover"
-                sizes="(max-width: 768px) 192px, 256px"
-              />
-            </div>
-
-            {/* User rating */}
-            {userRating && (
-              <div className="mt-3 text-center">
-                <p className="text-xs text-[var(--text-muted)] mb-1">Your Rating</p>
-                <span className="text-2xl font-black" style={{ color: getRatingColor(userRating) }}>
-                  {userRating}/10
+    <article className="pb-16">
+      <JsonLd data={movieJsonLd(movie)} />
+      <DetailHero
+        title={movie.title}
+        backdropPath={movie.backdrop_path}
+        posterPath={movie.poster_path}
+        posterAlt={`${movie.title} poster`}
+        genres={(movie.genres ?? []).map((g) => ({ ...g, href: `/genre/${g.id}?name=${encodeURIComponent(g.name)}` }))}
+        tagline={movie.tagline}
+        meta={[
+          year && <time dateTime={movie.release_date}>{year}</time>,
+          movie.runtime ? <span className="tabular">{formatRuntime(movie.runtime)}</span> : null,
+          cert && <CertBadge value={cert.value} region={cert.region} />,
+          directors.length > 0 && (
+            <span>
+              Directed by{' '}
+              {directors.slice(0, 2).map((d, i) => (
+                <span key={d.id}>
+                  {i > 0 && ' & '}
+                  <Link href={`/person/${d.id}`} className="font-medium text-fg hover:text-accent">
+                    {d.name}
+                  </Link>
                 </span>
-              </div>
-            )}
-          </div>
-
-          {/* Details */}
-          <div className="flex-1 space-y-5">
-            {/* Title + meta */}
-            <div>
-              {(movie.genres?.length ?? 0) > 0 && (
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {movie.genres!.map((g) => (
-                    <Link
-                      key={g.id}
-                      href={`/genre/${g.id}?name=${encodeURIComponent(g.name)}`}
-                      className="text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--accent-primary)] hover:text-[var(--accent-primary)] transition-colors"
-                    >
-                      {g.name}
-                    </Link>
-                  ))}
-                </div>
-              )}
-
-              <h1 className="text-3xl md:text-4xl font-black text-[var(--text-primary)] leading-tight">
-                {movie.title}
-              </h1>
-
-              {movie.tagline && (
-                <p className="text-[var(--text-muted)] italic mt-1.5">"{movie.tagline}"</p>
-              )}
-
-              <div className="flex items-center gap-5 mt-4 flex-wrap">
-                <RatingBadge rating={movie.vote_average} size="lg" />
-                <span className="text-xs text-[var(--text-muted)]">{movie.vote_count.toLocaleString()} votes</span>
-                <span className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)]">
-                  <Calendar size={14} />
-                  {formatYear(movie.release_date)}
-                </span>
-                <span className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)]">
-                  <Clock size={14} />
-                  {formatRuntime(movie.runtime)}
-                </span>
-                {movie.spoken_languages?.[0] && (
-                  <span className="flex items-center gap-1.5 text-sm text-[var(--text-secondary)]">
-                    <Globe size={14} />
-                    {movie.spoken_languages[0].english_name}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Overview */}
-            <p className="text-[var(--text-secondary)] leading-relaxed text-base max-w-2xl">
-              {movie.overview}
-            </p>
-
-            {/* Director */}
-            {director && (
-              <p className="text-sm text-[var(--text-secondary)]">
-                <span className="text-[var(--text-muted)]">Director:</span>{' '}
-                <Link href={`/person/${director.id}`} className="text-[var(--text-primary)] font-medium hover:text-[var(--accent-primary)] transition-colors">
-                  {director.name}
-                </Link>
-              </p>
-            )}
-
-            {/* Actions */}
-            <div className="flex flex-wrap gap-3">
-              {trailerKey && (
-                <a
-                  href={`https://www.youtube.com/watch?v=${trailerKey}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 px-5 py-2.5 bg-[var(--accent-primary)] hover:bg-[var(--accent-secondary)] text-white font-semibold rounded-xl transition-all hover:shadow-[0_0_20px_rgba(124,58,237,0.4)] text-sm"
-                >
-                  <Play size={16} className="fill-current" />
-                  Watch Trailer
-                </a>
-              )}
-              <button
-                onClick={handleWatchlist}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl border font-medium text-sm transition-all ${
-                  inWatchlist
-                    ? 'border-[var(--accent-primary)] bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]'
-                    : 'border-[var(--border)] text-[var(--text-secondary)] hover:border-[var(--accent-primary)] hover:text-[var(--text-primary)]'
-                }`}
-              >
-                {inWatchlist ? <BookmarkCheck size={16} /> : <BookmarkPlus size={16} />}
-                {inWatchlist ? 'In Watchlist' : 'Add to Watchlist'}
-              </button>
-            </div>
-
-            {/* Streaming providers */}
-            {usProviders && (
-              <div className="space-y-3">
-                <p className="text-sm font-semibold text-[var(--text-primary)]">Available on</p>
-                <div className="flex flex-wrap gap-3">
-                  {[...(usProviders.flatrate ?? []), ...(usProviders.rent ?? []), ...(usProviders.buy ?? [])].slice(0, 6).map((p) => (
-                    <div key={p.provider_id} title={p.provider_name} className="relative w-9 h-9 rounded-lg overflow-hidden ring-1 ring-white/10">
-                      <Image
-                        src={`https://image.tmdb.org/t/p/original${p.logo_path}`}
-                        alt={p.provider_name}
-                        fill
-                        className="object-cover"
-                        sizes="36px"
-                      />
-                    </div>
-                  ))}
-                  {usProviders.link && (
-                    <a href={usProviders.link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-[var(--accent-primary)] hover:underline">
-                      <ExternalLink size={12} />
-                      More
-                    </a>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Trailer embed */}
-        {trailerKey && (
-          <div className="mt-12">
-            <h2 className="text-xl font-bold text-[var(--text-primary)] mb-4">Trailer</h2>
-            <div className="relative w-full max-w-3xl aspect-video rounded-2xl overflow-hidden ring-1 ring-white/10 shadow-[0_16px_48px_rgba(0,0,0,0.6)]">
-              <iframe
-                src={`https://www.youtube.com/embed/${trailerKey}?rel=0&modestbranding=1`}
-                title={`${movie.title} Trailer`}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                className="absolute inset-0 w-full h-full"
-              />
-            </div>
-          </div>
-        )}
-
-        {/* YouTube Videos & Shorts */}
-        <YouTubeSection
-          query={movie.title}
-          videoSuffix="official clip scene"
-          sectionTitle="Videos & Shorts"
-        />
-
-        {/* Cast */}
-        {cast.length > 0 && (
-          <div className="mt-12">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-xl font-bold text-[var(--text-primary)]">Cast</h2>
-            </div>
-            <div className="flex gap-4 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
-              {cast.map((member) => (
-                <Link key={member.id} href={`/person/${member.id}`} className="flex-shrink-0 w-28 group">
-                  <div className="relative w-full aspect-[2/3] rounded-xl overflow-hidden bg-[var(--bg-card)] ring-1 ring-white/5 group-hover:ring-[var(--accent-primary)]/30 transition-all">
-                    {member.profile_path ? (
-                      <Image
-                        src={tmdbImage(member.profile_path, 'w185')}
-                        alt={member.name}
-                        fill
-                        className="object-cover"
-                        sizes="112px"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center text-3xl text-[var(--text-muted)]">👤</div>
-                    )}
-                  </div>
-                  <p className="text-xs font-medium text-[var(--text-primary)] mt-2 line-clamp-1 group-hover:text-[var(--accent-primary)] transition-colors">{member.name}</p>
-                  <p className="text-xs text-[var(--text-muted)] line-clamp-1">{member.character}</p>
-                </Link>
               ))}
-            </div>
-          </div>
-        )}
+            </span>
+          ),
+        ]}
+      >
+        <ScorePanel media={media} trailer={trailer} sharePath={`/movie/${movie.id}`} />
+      </DetailHero>
 
-        {/* Reviews */}
-        <div className="mt-12">
-          <ReviewSection movie={movie} />
+      <div className="mt-10 grid gap-10 px-gutter lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="min-w-0">
+          <Tabs label={`${movie.title} sections`} items={tabs} />
         </div>
-
-        {/* Recommendations */}
-        {(movie.recommendations?.results?.length ?? 0) > 0 && (
-          <div className="mt-4">
-            <HorizontalScroll
-              title="You Might Also Like"
-              items={movie.recommendations!.results}
-              mediaType="movie"
-            />
-          </div>
-        )}
-
-        {/* Similar */}
-        {(movie.similar?.results?.length ?? 0) > 0 && (
-          <div className="mt-4 mb-12">
-            <HorizontalScroll
-              title="Similar Movies"
-              items={movie.similar!.results}
-              mediaType="movie"
-            />
-          </div>
-        )}
+        <aside className="space-y-6" aria-label="Watch options and details">
+          <WhereToWatch providers={providers} region={region} title={movie.title} />
+          <FactsCard
+            facts={[
+              { label: 'Release date', value: movie.release_date ? formatDate(movie.release_date, { year: 'numeric', month: 'long', day: 'numeric' }) : null },
+              { label: 'Status', value: movie.status },
+              { label: 'Original title', value: movie.original_title !== movie.title ? movie.original_title : null },
+              {
+                label: 'Language',
+                value: movie.spoken_languages?.find((l) => l.iso_639_1 === movie.original_language)?.english_name ?? movie.original_language?.toUpperCase(),
+              },
+              { label: 'Budget', value: money(movie.budget) },
+              { label: 'Box office', value: money(movie.revenue) },
+              { label: 'Studios', value: (movie.production_companies ?? []).slice(0, 3).map((c) => c.name).join(', ') },
+              {
+                label: 'Collection',
+                value: movie.belongs_to_collection?.name,
+              },
+            ]}
+          />
+          {!!movie.keywords?.keywords?.length && (
+            <section aria-labelledby="kw-title" className="rounded-panel border border-line bg-surface-1 p-5">
+              <h2 id="kw-title" className="text-h3 text-fg">
+                Keywords
+              </h2>
+              <ul className="mt-3 flex flex-wrap gap-1.5">
+                {movie.keywords.keywords.slice(0, 16).map((k) => (
+                  <li key={k.id} className="rounded-chip bg-surface-2 px-2 py-1 text-micro text-fg-secondary">
+                    {k.name}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </aside>
       </div>
-    </div>
+    </article>
   );
 }

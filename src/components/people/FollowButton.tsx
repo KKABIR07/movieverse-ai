@@ -1,59 +1,69 @@
 'use client';
 
-import { useState } from 'react';
-import { UserPlus, UserCheck, Loader2 } from 'lucide-react';
-import { useFollowingStore } from '@/store/followingStore';
+import { useState, type MouseEvent } from 'react';
+import { UserCheck, UserPlus } from 'lucide-react';
+import { useFollowingStore, useIsFollowing } from '@/store/followingStore';
 import { useAuthStore } from '@/store/authStore';
+import { useStoresHydrated } from '@/store/hydration';
+import { openAuth } from '@/store';
+import { Button } from '@/components/ui/Button';
 import type { Person } from '@/types/tmdb';
 
 interface Props {
   person: Pick<Person, 'id' | 'name' | 'profile_path' | 'known_for_department'>;
-  size?: 'sm' | 'md';
+  size?: 'sm' | 'md' | 'lg';
   className?: string;
+  /** Called (before the sign-in dialog opens) when a signed-out user clicks. */
   onAuthRequired?: () => void;
 }
 
-export function FollowButton({ person, size = 'md', className = '', onAuthRequired }: Props) {
-  const { isFollowing, follow, unfollow } = useFollowingStore();
-  const { user } = useAuthStore();
-  const [loading, setLoading] = useState(false);
-  const following = isFollowing(person.id);
+/**
+ * Follow / unfollow a person (server-backed, optimistic; failures roll back with a toast).
+ * Signed-out users get the sign-in dialog.
+ */
+export function FollowButton({ person, size = 'md', className, onAuthRequired }: Props) {
+  const hydrated = useStoresHydrated();
+  const followingRaw = useIsFollowing(person.id);
+  const following = hydrated && followingRaw;
+  const status = useAuthStore((s) => s.status);
+  const [busy, setBusy] = useState(false);
 
-  const handleClick = async (e: React.MouseEvent) => {
+  const onClick = async (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!user) {
+    if (status !== 'authenticated') {
       onAuthRequired?.();
-      window.dispatchEvent(new CustomEvent('mkmovies:openAuth', { detail: { tab: 'login' } }));
+      openAuth('login');
       return;
     }
-    setLoading(true);
+    setBusy(true);
     try {
-      if (following) await unfollow(person.id);
-      else await follow({ id: person.id, name: person.name, profile_path: person.profile_path, known_for_department: person.known_for_department });
+      const store = useFollowingStore.getState();
+      if (following) await store.unfollow(person.id);
+      else
+        await store.follow({
+          id: person.id,
+          name: person.name,
+          profile_path: person.profile_path,
+          known_for_department: person.known_for_department || 'Acting',
+        });
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   };
 
-  const sm = size === 'sm';
-
   return (
-    <button
-      onClick={handleClick}
-      disabled={loading}
-      className={`flex items-center gap-1.5 font-semibold rounded-full transition-all active:scale-95 disabled:opacity-60 ${
-        following
-          ? 'bg-white/10 border border-white/20 text-white/70 hover:bg-red-500/20 hover:border-red-500/30 hover:text-red-400'
-          : 'bg-[var(--accent-primary)] text-white hover:bg-[var(--accent-secondary)] shadow-[0_0_14px_rgba(124,58,237,0.4)]'
-      } ${sm ? 'px-3 py-1.5 text-xs' : 'px-4 py-2 text-sm'} ${className}`}
+    <Button
+      variant={following ? 'secondary' : 'primary'}
+      size={size}
+      onClick={onClick}
+      loading={busy}
+      aria-pressed={following}
+      aria-label={following ? `Unfollow ${person.name}` : `Follow ${person.name}`}
+      leadingIcon={following ? <UserCheck className="text-accent" /> : <UserPlus />}
+      className={className}
     >
-      {loading
-        ? <Loader2 size={sm ? 11 : 14} className="animate-spin" />
-        : following
-          ? <UserCheck size={sm ? 11 : 14} />
-          : <UserPlus size={sm ? 11 : 14} />}
       {following ? 'Following' : 'Follow'}
-    </button>
+    </Button>
   );
 }
