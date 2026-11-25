@@ -37,6 +37,9 @@ const nextConfig: NextConfig = {
   // a parent directory has its own lockfile (e.g. git worktrees nested inside the main checkout).
   outputFileTracingRoot: path.join(__dirname),
   poweredByHeader: false,
+  // In-memory slice of the data cache lives in the Node heap (448 MB of the 1 GB app cap);
+  // everything beyond this spills to .next/cache on the 5 GB disk.
+  cacheMaxMemorySize: 32 * 1024 * 1024,
 
   images: {
     // Custom loader → the browser fetches pre-sized renditions straight from the TMDB CDN.
