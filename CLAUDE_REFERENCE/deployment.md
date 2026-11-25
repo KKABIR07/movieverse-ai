@@ -249,6 +249,15 @@ sudo tail -f /opt/mkmovies/logs/caddy-access.log
 docker exec -it mkmovies-db psql -U mkmovies -d mkmovies   # local socket inside the container
 ```
 
+## Live status
+
+- **Live** at https://www.mkmovies.site since 2026-11-25 (apex and http redirect to it). Vercel is retired: the old
+  Vercel project lives in the repo owner's Vercel account and is deleted by the owner from the dashboard.
+- Live smoke check: `E2E_BASE_URL=https://www.mkmovies.site npx playwright test --grep @smoke --project=desktop`
+  (read-only tests only; never point the @full suite at production — it creates users).
+- Measured 2026-11-25: whole app 172–277 MiB of the 1 GiB slice under a 60 s load test (773 req, 0 errors),
+  disk 52–71 MB of 4.9 GB, image 84 MB.
+
 ## Troubleshooting
 
 | Symptom | Likely cause / fix |
@@ -265,5 +274,7 @@ docker exec -it mkmovies-db psql -U mkmovies -d mkmovies   # local socket inside
 | `OOMKilled=true` | One container hit its cap (`docker inspect -f '{{.State.OOMKilled}}' mkmovies-web`); check `systemctl status mkmovies.slice`. |
 | `DISK_WARNING` file present | ≥ 80 % used; see `journalctl -u mkmovies-disk-guard` for the breakdown. |
 | Cloudflare 526 / 521 / 522 | Bad origin cert / Caddy down / CF ranges changed (`update-cloudflare-ips.sh`). |
+| Cloudflare 525 right after a deploy | Caddy never loaded the mkmovies block (deploy exit 5). Seen 2026-11-25: a root-run `caddy validate` created `logs/caddy-access.log` root-owned, so the caddy-run reload could not open it. deploy.sh now validates **as the caddy user** and chowns stray log files; if it recurs: `sudo chown caddy:caddy /opt/mkmovies/logs/*` and redeploy. |
+| Status checks from the Windows workstation return `000` | Local `curl -w` bug (error 43), not the site — use `node -e "fetch(...)"` or Playwright with `E2E_BASE_URL`. |
 | `/opt/mkmovies` not mounted after reboot | `sudo mount /opt/mkmovies`; check the fstab line and `journalctl -b | grep mkmovies`. |
 | Port 3120 taken | `APP_PORT=… ./scripts/deploy.sh` and update this doc. |

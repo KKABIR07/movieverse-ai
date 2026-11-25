@@ -2,7 +2,7 @@
  * Watch-provider region for the current request (pure; pass a header getter).
  * Order: CDN geo headers → first Accept-Language tag with a region → 'US'.
  */
-const GEO_HEADERS = ['x-vercel-ip-country', 'cf-ipcountry', 'cloudfront-viewer-country', 'x-country-code', 'x-geo-country'];
+const GEO_HEADERS = ['cf-ipcountry', 'cloudfront-viewer-country', 'x-country-code', 'x-geo-country'];
 /** Placeholder codes some CDNs send (unknown / Tor). */
 const INVALID = new Set(['XX', 'T1', 'A1', 'A2', 'O1', 'EU', 'AP']);
 

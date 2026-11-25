@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# mkmovies
 
-## Getting Started
+Discover movies and TV shows — trending lists, Top 10s, genres, cast, trailers, reviews and a personal watchlist.
 
-First, run the development server:
+**Live:** https://www.mkmovies.site
+
+## Stack
+
+Next.js 16 (App Router) · React 19 · Tailwind CSS 4 · PostgreSQL 17 + Drizzle ORM · TMDB API · YouTube Data API ·
+Groq (AI assistant). Self-hosted with Docker on an Oracle Cloud VM behind Cloudflare; the whole app (web + database)
+runs inside a 1 GiB RAM / 5 GiB disk budget.
+
+## Features
+
+- Home hero with muted background trailers, hover-to-preview trailers on every poster, Top 10 rows
+- Discover with filters (type, years, rating, language, genres, sort), search, genre and people pages
+- Movie / TV / person detail pages with cast, videos, where-to-watch, seasons and JSON-LD
+- Accounts: watchlist (shareable link), reviews and likes, following people, feed, community chat
+- AI recommendations (Groq), Shorts (YouTube)
+- Accessible (keyboard, screen readers, reduced motion), responsive down to 360 px, SEO (sitemap, canonical URLs)
+
+## Run locally
+
+Requirements: Node 22+, Docker (for a local Postgres).
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local          # fill TMDB_BEARER (required), JWT_SECRET (≥ 32 chars), DATABASE_URL
+docker run -d --name mkmovies-pg -e POSTGRES_USER=mk -e POSTGRES_PASSWORD=mk -e POSTGRES_DB=mkmovies \
+  -p 127.0.0.1:5432:5432 postgres:17-alpine
+npm ci
+npm run dev                         # http://localhost:3000 — migrations run automatically on start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Optional: `GROQ_API_KEY` (AI assistant, `GROQ_MODEL` defaults to `openai/gpt-oss-120b`), `YOUTUBE_API_KEY` (Shorts).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Quality gates
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run check        # lint + typecheck + unit/integration tests
+npm run qa           # + production build, bundle secret scan, Playwright e2e/security/perf against `next start`
+```
 
-## Learn More
+See `CLAUDE_REFERENCE/testing.md`.
 
-To learn more about Next.js, take a look at the following resources:
+## Deploy
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+`./scripts/deploy.sh` ships the committed `HEAD` to the server (build on the box, DB backup, migrations, health and
+readiness checks, Caddy, resource report). Runbook: `CLAUDE_REFERENCE/deployment.md`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Credits
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Movie and TV data and images from [TMDB](https://www.themoviedb.org/) (this product uses the TMDB API but is not
+endorsed or certified by TMDB). Streaming availability by JustWatch via TMDB. Trailers from YouTube.
