@@ -10,7 +10,13 @@
 > Branch `feature/oci-redesign`: Plan_WIP + test tooling committed (repo git identity set to KKABIR07).
 > WAVE 1 running in worktrees: backend (Phase 1 + TMDB server-side + /api/health), foundation (tokens, shell,
 > primitives, media comps, stores), infra (Docker, caps, Caddy, deploy.sh, next.config, robots).
-> NEXT: merge wave 1 → WAVE 2 page agents (P1 browse pages, P2 detail/user pages) → tests/e2e → deploy.
+> Wave 1 MERGED (infra fdf85ab, backend 8ae2c9c, foundation + type fix c9c1499); axios/framer-motion/gsap removed.
+> NOW RUNNING IN PARALLEL (user: "start all work in parallel"): DB-port (Mongo→Postgres/Drizzle), infra update
+> (db service, mkmovies.slice 1 GB, backups, disk guard, .next/cache on disk), Page Agent 1 (home/browse/discover/
+> search/genre/stars), Page Agent 2 (movie/tv/person/shorts/feed/watchlist/profile/about/blog/sitemap + server sync),
+> QA agent (Playwright e2e, security, perf, bundle secret scan).
+> THEN (integrator): merge all → delete legacy components + three/@react-three deps → cacheMaxMemorySize in
+> next.config → full test run → screenshots to user → deploy → live smoke → Vercel removal (confirm) → docs → PR.
 > Dev on this PC needs NODE_OPTIONS=--require=<scratchpad>/dev-dns.cjs (Jio blocks TMDB DNS). JWT_SECRET in
 > .env.local is a placeholder — prod gets a generated one. Mockup: https://claude.ai/artifact/25VY1mgzhLi6zz33aikZh8
 
