@@ -4,7 +4,7 @@
 #   sudo bash setup-storage.sh [owner]        # owner defaults to "ubuntu"
 #
 # Creates a fully-allocated 5 GiB ext4 image at $IMG and loop-mounts it at $MNT via /etc/fstab.
-# Everything mkmovies keeps on disk (extracted source, .env, future data/backups) lives inside
+# Everything mkmovies keeps on disk (source, .env, pgdata/, backups/, logs/) lives inside
 # this filesystem, so it can never grow past 5 GiB. Idempotent: safe to run on every deploy.
 #
 # Env overrides: IMG, MNT, SIZE_GIB.
@@ -14,7 +14,8 @@ IMG="${IMG:-/var/lib/mkmovies/disk.img}"
 MNT="${MNT:-/opt/mkmovies}"
 SIZE_GIB="${SIZE_GIB:-5}"
 OWNER="${1:-ubuntu}"
-FSTAB_LINE="$IMG $MNT ext4 loop,nodev,nosuid,noatime,nofail 0 2"
+# x-systemd.before=caddy.service: mounted before Caddy starts, so the mkmovies access log lands inside the cap.
+FSTAB_LINE="$IMG $MNT ext4 loop,nodev,nosuid,noatime,nofail,x-systemd.before=caddy.service 0 2"
 
 log() { printf '[setup-storage] %s\n' "$*"; }
 die() { printf '[setup-storage] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -78,8 +79,9 @@ else
   log "mounted $IMG at $MNT"
 fi
 
-# 4. Ownership: the deploy user owns the tree (the image root dir itself included).
+# 4. Ownership: the deploy user owns the tree (the image root dir itself included). Mode 751: others
+#    (the caddy user, for logs/) may traverse but not list; .env is 600, pgdata 700, backups 700.
 chown "$OWNER:$OWNER" "$MNT"
-chmod 750 "$MNT"
+chmod 751 "$MNT"
 
 df -h "$MNT" | sed 's/^/[setup-storage] /'
