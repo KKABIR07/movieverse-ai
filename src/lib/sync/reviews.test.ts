@@ -18,14 +18,14 @@ describe('validateReview', () => {
 
 describe('reviews api', () => {
   it('trims content and posts JSON', async () => {
-    const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) => new Response(JSON.stringify({ review: { id: 'r' } }), { status: 201 }));
+    const fetchImpl = vi.fn<(u: string, i?: RequestInit) => Promise<Response>>(async () => new Response(JSON.stringify({ review: { id: 'r' } }), { status: 201 }));
     await createReviewsApi(fetchImpl).save({ movieId: 550, movieTitle: 'Fight Club', rating: 9, content: '  Wow  ' });
     const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('/api/reviews');
     expect(JSON.parse(init.body as string)).toMatchObject({ movieId: 550, rating: 9, content: 'Wow', spoiler: false });
   });
   it('lists by movie id', async () => {
-    const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) => new Response(JSON.stringify({ reviews: [{ id: 'a' }] }), { status: 200 }));
+    const fetchImpl = vi.fn<(u: string, i?: RequestInit) => Promise<Response>>(async () => new Response(JSON.stringify({ reviews: [{ id: 'a' }] }), { status: 200 }));
     await expect(createReviewsApi(fetchImpl).list(550)).resolves.toEqual([{ id: 'a' }]);
     expect(fetchImpl.mock.calls[0][0]).toBe('/api/reviews?movieId=550');
   });
@@ -42,7 +42,7 @@ describe('follows api', () => {
     });
   });
   it('dedupes and caps count ids', async () => {
-    const fetchImpl = vi.fn(async (_u: string, _i?: RequestInit) => new Response(JSON.stringify({ counts: { '1': 3, '2': 0 } }), { status: 200 }));
+    const fetchImpl = vi.fn<(u: string, i?: RequestInit) => Promise<Response>>(async () => new Response(JSON.stringify({ counts: { '1': 3, '2': 0 } }), { status: 200 }));
     await expect(createFollowsApi(fetchImpl).counts([1, 2, 2, -1])).resolves.toEqual({ 1: 3, 2: 0 });
     expect(fetchImpl.mock.calls[0][0]).toBe('/api/follows/counts?ids=1,2');
   });
