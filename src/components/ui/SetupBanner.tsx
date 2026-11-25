@@ -21,7 +21,7 @@ export function SetupBanner() {
 
   return (
     <div
-      className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[100] w-[calc(100%-2rem)] max-w-xl shadow-2xl rounded-2xl border border-amber-500/30 bg-[#1a1508] text-sm overflow-hidden"
+      className="fixed bottom-[calc(var(--tabbar-h)+env(safe-area-inset-bottom,0px)+12px)] md:bottom-5 left-1/2 -translate-x-1/2 z-[100] w-[calc(100%-2rem)] max-w-xl shadow-pop rounded-panel border border-accent/30 bg-surface-2 text-caption overflow-hidden"
       role="alert"
     >
       {/* Header row */}
@@ -75,7 +75,7 @@ export function SetupBanner() {
             </li>
             <li className="flex gap-3">
               <span className="flex-shrink-0 w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold flex items-center justify-center">2</span>
-              <span>Open <code className="bg-amber-500/10 px-1.5 py-0.5 rounded text-amber-300">movieverse/.env.local</code> and replace the placeholder:</span>
+              <span>Open <code className="bg-amber-500/10 px-1.5 py-0.5 rounded text-amber-300">.env.local</code> and replace the placeholder:</span>
             </li>
           </ol>
 

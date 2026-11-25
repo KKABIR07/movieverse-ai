@@ -1,205 +1,188 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter, usePathname } from 'next/navigation';
-import {
-  Search, Bookmark, X, Menu, Film, Tv, TrendingUp,
-  Star, Home, SlidersHorizontal, Compass, Users, Shuffle,
-} from 'lucide-react';
-import { useUIStore, useWatchlistStore } from '@/store';
-import { useFilterStore } from '@/store/filterStore';
+import { usePathname } from 'next/navigation';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { Bookmark, MessageSquare, Search, Shuffle } from 'lucide-react';
+import { useUIStore, useWatchlistCount, type AuthTab } from '@/store';
 import { useAuthStore } from '@/store/authStore';
+import { useChatStore } from '@/store/chatStore';
+import { useStoresHydrated } from '@/store/hydration';
+import { useHotkey } from '@/lib/hooks/useHotkey';
+import { IconButton } from '@/components/ui/IconButton';
+import { Button } from '@/components/ui/Button';
+import { cn } from '@/components/ui/cn';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { AuthModal } from '@/components/auth/AuthModal';
 import { DiceRollModal } from '@/components/movie/DiceRollModal';
+import { CommandPalette } from './CommandPalette';
+import { Logo } from './Logo';
+import { PRIMARY_NAV, isNavActive } from './nav';
 
-const NAV_LINKS = [
-  { href: '/',           label: 'Home',      icon: Home },
-  { href: '/trending',   label: 'Trending',  icon: TrendingUp },
-  { href: '/discover',   label: 'Discover',  icon: Compass },
-  { href: '/movies',     label: 'Movies',    icon: Film },
-  { href: '/tv',         label: 'TV Shows',  icon: Tv },
-  { href: '/top-rated',  label: 'Top Rated', icon: Star },
-  { href: '/following',  label: 'Following', icon: Users },
-];
+const SCROLL_THRESHOLD = 24;
+
+function subscribeScroll(cb: () => void) {
+  window.addEventListener('scroll', cb, { passive: true });
+  return () => window.removeEventListener('scroll', cb);
+}
+function useScrolled() {
+  return useSyncExternalStore(
+    subscribeScroll,
+    () => window.scrollY > SCROLL_THRESHOLD,
+    () => false,
+  );
+}
+
+const noop = () => () => {};
+/** "⌘K" on Apple platforms, "Ctrl K" elsewhere (server renders "Ctrl K"). */
+function useShortcutLabel() {
+  return useSyncExternalStore(
+    noop,
+    () => (/Mac|iPhone|iPad|iPod/i.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K'),
+    () => 'Ctrl K',
+  );
+}
 
 export function Header() {
-  const router = useRouter();
   const pathname = usePathname();
-  const [scrolled, setScrolled] = useState(false);
-  const [query, setQuery] = useState('');
-  const [authOpen, setAuthOpen] = useState(false);
-  const [authTab, setAuthTab] = useState<'login' | 'signup'>('login');
+  const scrolled = useScrolled();
+  const shortcut = useShortcutLabel();
   const [diceOpen, setDiceOpen] = useState(false);
-  const [diceSpinning, setDiceSpinning] = useState(false);
-  const { searchOpen, setSearchOpen, mobileMenuOpen, setMobileMenuOpen } = useUIStore();
-  const watchlistItems = useWatchlistStore((s) => s.getActiveItems());
-  const { toggleSidebar } = useFilterStore();
-  const { user } = useAuthStore();
 
-  useEffect(() => {
-    const handler = () => setScrolled(window.scrollY > 40);
-    window.addEventListener('scroll', handler, { passive: true });
-    return () => window.removeEventListener('scroll', handler);
-  }, []);
+  const searchOpen = useUIStore((s) => s.searchOpen);
+  const setSearchOpen = useUIStore((s) => s.setSearchOpen);
+  const authOpen = useUIStore((s) => s.authOpen);
+  const authTab = useUIStore((s) => s.authTab);
+  const openAuth = useUIStore((s) => s.openAuth);
+  const closeAuth = useUIStore((s) => s.closeAuth);
 
-  // Global auth event from any page
+  const signedIn = useAuthStore((s) => !!s.user);
+  const hydrated = useStoresHydrated();
+  const watchCount = useWatchlistCount();
+  const shownCount = hydrated && signedIn ? watchCount : 0;
+
+  const toggleChat = useChatStore((s) => s.toggleChat);
+  const chatOpen = useChatStore((s) => s.chatOpen);
+  const unread = useChatStore((s) => s.unreadCount);
+
+  useHotkey('mod+k', () => setSearchOpen(!useUIStore.getState().searchOpen), { allowInInputs: true });
+  useHotkey('/', () => setSearchOpen(true), { enabled: !searchOpen });
+
+  // Legacy: pages dispatch `mkmovies:openAuth` to request the sign-in dialog.
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      openAuth(detail?.tab ?? 'login');
+      const tab = (e as CustomEvent<{ tab?: AuthTab }>).detail?.tab ?? 'login';
+      openAuth(tab);
     };
     window.addEventListener('mkmovies:openAuth', handler);
     return () => window.removeEventListener('mkmovies:openAuth', handler);
-  }, []);
-
-  useEffect(() => {
-    setMobileMenuOpen(false);
-    setSearchOpen(false);
-  }, [pathname, setMobileMenuOpen, setSearchOpen]);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (query.trim()) {
-      router.push(`/search?q=${encodeURIComponent(query.trim())}`);
-      setSearchOpen(false);
-      setQuery('');
-    }
-  };
-
-  const openAuth = (tab: 'login' | 'signup' = 'login') => {
-    setAuthTab(tab);
-    setAuthOpen(true);
-  };
+  }, [openAuth]);
 
   return (
     <>
       <header
-        className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-          scrolled ? 'glass border-b border-[var(--border)]' : 'bg-gradient-to-b from-black/60 to-transparent'
-        }`}
+        className={cn(
+          'fixed inset-x-0 top-0 z-50 h-[var(--header-h)] transition-[background-color,border-color,backdrop-filter] duration-200',
+          scrolled
+            ? 'border-b border-line bg-ground/85 backdrop-blur-xl backdrop-saturate-150'
+            : 'border-b border-transparent bg-gradient-to-b from-ground/80 to-transparent',
+        )}
       >
-        <div className="flex items-center justify-between h-16 px-4 md:px-6 gap-3">
-          {/* Sidebar toggle + Logo */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={toggleSidebar}
-              className="p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
-              aria-label="Toggle sidebar"
-            >
-              <SlidersHorizontal size={18} />
-            </button>
-            <Link href="/" className="flex items-center gap-2 group">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-[var(--accent-primary)]">
-                <Film size={16} className="text-white" />
-              </div>
-              <span className="font-bold text-base gradient-text hidden sm:block">mkmovies</span>
-            </Link>
-          </div>
+        <div className="flex h-full items-center gap-2 px-gutter">
+          <Logo className="shrink-0 lg:mr-2" wordmarkClassName="md:max-lg:sr-only" />
 
-          {/* Desktop Nav */}
-          <nav className="hidden lg:flex items-center gap-0.5 flex-1 justify-center">
-            {NAV_LINKS.map(({ href, label }) => (
-              <Link
-                key={href}
-                href={href}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                  pathname === href
-                    ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
-                }`}
-              >
-                {label}
-              </Link>
-            ))}
+          <nav aria-label="Primary" className="hidden md:flex flex-1 justify-center min-w-0">
+            <ul className="flex items-center gap-0.5 rounded-full border border-line/80 bg-surface-1/70 p-1 backdrop-blur-md">
+              {PRIMARY_NAV.map((item) => {
+                const active = isNavActive(item, pathname);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      aria-current={active ? 'page' : undefined}
+                      className={cn(
+                        'inline-flex h-9 items-center rounded-full px-3 lg:px-3.5 text-caption font-medium whitespace-nowrap transition-colors duration-120',
+                        active ? 'bg-surface-3 text-fg' : 'text-fg-secondary hover:text-fg hover:bg-surface-2',
+                      )}
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
           </nav>
 
-          {/* Right actions */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            {/* Dice Roll */}
+          <div className="ml-auto flex shrink-0 items-center gap-1 md:ml-0">
+            {/* Search trigger: wide on xl, icon below. Mobile uses the tab bar. */}
             <button
-              onClick={() => {
-                setDiceSpinning(true);
-                setTimeout(() => setDiceSpinning(false), 600);
-                setDiceOpen(true);
-              }}
-              title="Random pick"
-              aria-label="Random movie or show"
-              className="relative p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent-primary)] hover:bg-[var(--accent-primary)]/10 transition-colors group"
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              aria-label="Search movies, TV shows and people"
+              aria-keyshortcuts="Control+K Meta+K /"
+              aria-haspopup="dialog"
+              className="hidden xl:inline-flex h-11 w-56 items-center gap-2 rounded-control border border-line bg-surface-1/80 px-3 text-caption text-fg-muted hover:border-line-strong hover:text-fg-secondary transition-colors"
             >
-              <Shuffle
-                size={19}
-                style={{ transition: 'transform 0.1s', transform: diceSpinning ? 'rotate(20deg) scale(1.2)' : 'none' }}
+              <Search aria-hidden className="size-4" />
+              <span className="flex-1 text-left">Search</span>
+              <kbd className="rounded-[6px] border border-line bg-surface-2 px-1.5 py-0.5 font-sans text-micro text-fg-muted">
+                {shortcut}
+              </kbd>
+            </button>
+            <IconButton
+              label={`Search (${shortcut})`}
+              icon={<Search />}
+              onClick={() => setSearchOpen(true)}
+              aria-haspopup="dialog"
+              className="hidden md:inline-flex xl:hidden"
+            />
+
+            <IconButton
+              label="Random pick"
+              icon={<Shuffle />}
+              onClick={() => setDiceOpen(true)}
+              className="hidden lg:inline-flex"
+            />
+
+            <IconButton
+              label={unread > 0 ? `Community chat, ${unread} unread` : 'Community chat'}
+              icon={<MessageSquare />}
+              badge={chatOpen ? 0 : unread}
+              pressed={chatOpen}
+              onClick={toggleChat}
+              aria-controls="chat-panel"
+            />
+
+            {signedIn ? (
+              <IconButton
+                href="/watchlist"
+                label={shownCount ? `Watchlist, ${shownCount} items` : 'Watchlist'}
+                icon={<Bookmark />}
+                badge={shownCount}
+                className="hidden md:inline-flex"
               />
-              <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--accent-primary)] opacity-0 group-hover:opacity-100 transition-opacity" />
-            </button>
-
-            {searchOpen ? (
-              <form onSubmit={handleSearch} className="flex items-center">
-                <input
-                  autoFocus
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search movies, TV, people..."
-                  className="w-48 sm:w-64 bg-[var(--bg-card)] border border-[var(--border-active)] rounded-lg px-3 py-1.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none"
-                />
-                <button type="button" onClick={() => setSearchOpen(false)} className="ml-1.5 p-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]">
-                  <X size={16} />
-                </button>
-              </form>
             ) : (
-              <button onClick={() => setSearchOpen(true)} className="p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors" aria-label="Search">
-                <Search size={19} />
-              </button>
+              <IconButton
+                label="Watchlist (sign in required)"
+                icon={<Bookmark />}
+                onClick={() => openAuth('login')}
+                className="hidden md:inline-flex"
+              />
             )}
 
-            {/* Watchlist — require login */}
-            {user ? (
-              <Link href="/watchlist" className="relative p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors" aria-label="Watchlist">
-                <Bookmark size={19} />
-                {watchlistItems.length > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-[var(--accent-primary)] text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                    {watchlistItems.length > 9 ? '9+' : watchlistItems.length}
-                  </span>
-                )}
-              </Link>
+            {signedIn ? (
+              <UserMenu onLoginClick={() => openAuth('login')} />
             ) : (
-              <button onClick={() => openAuth('login')} className="p-2 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors" aria-label="Sign in to use watchlist">
-                <Bookmark size={19} />
-              </button>
+              <Button onClick={() => openAuth("login")} className="ml-1 px-3.5">
+                Sign in
+              </Button>
             )}
-
-            <UserMenu onLoginClick={() => openAuth('login')} />
-
-            {/* Mobile menu */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 rounded-lg text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-              aria-label="Menu"
-            >
-              {mobileMenuOpen ? <X size={19} /> : <Menu size={19} />}
-            </button>
           </div>
         </div>
-
-        {/* Mobile menu */}
-        {mobileMenuOpen && (
-          <div className="lg:hidden glass border-t border-[var(--border)] px-4 py-3 space-y-1">
-            {NAV_LINKS.map(({ href, label, icon: Icon }) => (
-              <Link key={href} href={href} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${pathname === href ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
-                <Icon size={17} /> {label}
-              </Link>
-            ))}
-            <form onSubmit={handleSearch} className="pt-2">
-              <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search..." className="w-full bg-[var(--bg-card)] border border-[var(--border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent-primary)]" />
-            </form>
-          </div>
-        )}
       </header>
 
-      <AuthModal open={authOpen} onClose={() => setAuthOpen(false)} defaultTab={authTab} />
+      <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <AuthModal open={authOpen} onClose={closeAuth} defaultTab={authTab} />
       <DiceRollModal open={diceOpen} onClose={() => setDiceOpen(false)} />
     </>
   );
