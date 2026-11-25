@@ -148,3 +148,25 @@ export const useAuthStore = create<AuthStore>()((set) => ({
 /** Selector hooks */
 export const useUser = () => useAuthStore((s) => s.user);
 export const useAuthStatus = () => useAuthStore((s) => s.status);
+
+/**
+ * The sign-in state once `/api/auth/me` has answered. A click that arrives while it is still in flight
+ * ('unknown') waits for it instead of being treated as signed out — otherwise a signed-in user who clicks
+ * Watchlist / Follow right after a page load is shown the sign-in dialog. Gives up after `timeoutMs`
+ * (network trouble) and reports 'unknown'.
+ */
+export function resolveAuthStatus(timeoutMs = 5_000): Promise<AuthStatus> {
+  const now = useAuthStore.getState().status;
+  if (now !== 'unknown') return Promise.resolve(now);
+  return new Promise((resolve) => {
+    const done = (s: AuthStatus) => {
+      clearTimeout(timer);
+      unsub();
+      resolve(s);
+    };
+    const timer = setTimeout(() => done('unknown'), timeoutMs);
+    const unsub = useAuthStore.subscribe((st) => {
+      if (st.status !== 'unknown') done(st.status);
+    });
+  });
+}

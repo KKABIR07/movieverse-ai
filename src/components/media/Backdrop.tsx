@@ -31,13 +31,15 @@ export interface BackdropProps {
   /** object-position, e.g. "center 20%". */
   position?: string;
   className?: string;
+  /** Moving artwork (e.g. a background trailer) layered over the image and under the scrim. */
+  media?: ReactNode;
 }
 
 /**
  * Absolutely-filled backdrop image + gradient scrims. Parent must be `relative`.
  * @example <div className="relative aspect-video"><Backdrop path={m.backdrop_path} scrim="bottom" /></div>
  */
-export function Backdrop({ path, alt = '', preload = false, sizes = '100vw', scrim = 'bottom', position, className }: BackdropProps) {
+export function Backdrop({ path, alt = '', preload = false, sizes = '100vw', scrim = 'bottom', position, className, media }: BackdropProps) {
   return (
     <div className={cn('absolute inset-0 overflow-hidden bg-surface-1', className)}>
       {path && (
@@ -51,6 +53,7 @@ export function Backdrop({ path, alt = '', preload = false, sizes = '100vw', scr
           style={position ? { objectPosition: position } : undefined}
         />
       )}
+      {media}
       {scrims[scrim]}
     </div>
   );

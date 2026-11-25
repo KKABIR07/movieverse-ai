@@ -35,8 +35,9 @@ export default function OpengraphImage() {
               width: 64,
               height: 64,
               borderRadius: 16,
-              background: ACCENT,
-              color: GROUND,
+              // brand mark: same violet→indigo tile as the favicon
+              background: 'linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%)',
+              color: '#ffffff',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',

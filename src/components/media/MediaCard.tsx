@@ -2,34 +2,16 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import { Film, Tv } from 'lucide-react';
-import { tmdb, getTrailerKey } from '@/lib/tmdb';
 import { formatYear } from '@/lib/format';
-import { useCanHover } from '@/lib/hooks/useMediaQuery';
-import { usePrefersReducedMotion } from '@/lib/hooks/usePrefersReducedMotion';
 import { Rating } from '@/components/ui/Rating';
 import { cn } from '@/components/ui/cn';
 import { posterSrc, POSTER_SIZES } from './tmdbImage';
 import { WatchlistButton } from './WatchlistButton';
+import { BackgroundTrailer } from './BackgroundTrailer';
+import { useHoverTrailer } from './HoverTrailer';
 import { mediaHref, toMediaSummary, type MediaInput, type MediaType } from './types';
-
-const HOVER_DELAY_MS = 800;
-const trailerCache = new Map<string, string | null>();
-
-async function loadTrailer(id: number, type: MediaType): Promise<string | null> {
-  const key = `${type}:${id}`;
-  if (trailerCache.has(key)) return trailerCache.get(key) ?? null;
-  try {
-    const data = type === 'tv' ? await tmdb.tv.videos(id) : await tmdb.movie.videos(id);
-    const k = getTrailerKey(data);
-    trailerCache.set(key, k);
-    return k;
-  } catch {
-    trailerCache.set(key, null);
-    return null;
-  }
-}
 
 export interface MediaCardProps {
   item: MediaInput;
@@ -41,7 +23,7 @@ export interface MediaCardProps {
   preload?: boolean;
   showRating?: boolean;
   showWatchlist?: boolean;
-  /** Muted trailer on hover (pointer devices only, after 800ms, off for reduced motion). */
+  /** Muted trailer on hover (default on; pointer devices only, after 500ms, off for reduced motion / Save-Data). */
   trailerPreview?: boolean;
   /** Replace the "2024 · Movie" line. */
   meta?: ReactNode;
@@ -64,7 +46,7 @@ function MediaCardImpl({
   preload = false,
   showRating = true,
   showWatchlist = true,
-  trailerPreview = false,
+  trailerPreview = true,
   meta,
   headingLevel: Heading = 'h3',
   className,
@@ -74,37 +56,12 @@ function MediaCardImpl({
   const year = formatYear(m.date, '');
   const typeLabel = m.mediaType === 'tv' ? 'TV' : 'Movie';
 
-  const canHover = useCanHover();
-  const reducedMotion = usePrefersReducedMotion();
-  const previewEnabled = trailerPreview && canHover && !reducedMotion;
-  const [trailer, setTrailer] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hovering = useRef(false);
-
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-  }, []);
-
-  const startPreview = () => {
-    if (!previewEnabled) return;
-    hovering.current = true;
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(async () => {
-      const key = await loadTrailer(m.id, m.mediaType);
-      if (hovering.current && key) setTrailer(key);
-    }, HOVER_DELAY_MS);
-  };
-  const stopPreview = () => {
-    hovering.current = false;
-    if (timer.current) clearTimeout(timer.current);
-    setTrailer(null);
-  };
+  const { trailer, handlers } = useHoverTrailer(m.id, m.mediaType, trailerPreview);
 
   return (
     <article
       className={cn('group/card relative', className)}
-      onPointerEnter={startPreview}
-      onPointerLeave={stopPreview}
+      {...handlers}
     >
       <Link href={href} className="block rounded-card outline-offset-4">
         <div className="relative aspect-[2/3] overflow-hidden rounded-card bg-surface-2 ring-1 ring-inset ring-white/5">
@@ -123,16 +80,7 @@ function MediaCardImpl({
             </div>
           )}
 
-          {trailer && (
-            <iframe
-              title={`${m.title} trailer preview`}
-              aria-hidden
-              tabIndex={-1}
-              src={`https://www.youtube-nocookie.com/embed/${trailer}?autoplay=1&mute=1&controls=0&playsinline=1&loop=1&playlist=${trailer}&modestbranding=1&rel=0`}
-              allow="autoplay; encrypted-media"
-              className="hover-only pointer-events-none absolute inset-0 h-full w-full scale-[1.6] animate-fade-in"
-            />
-          )}
+          {trailer && <BackgroundTrailer videoKey={trailer} title={`${m.title} trailer preview`} className="hover-only" />}
 
           <div
             aria-hidden
