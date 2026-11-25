@@ -88,8 +88,20 @@
 ## Cloudflare (user request 2026-11-25)
 - Site goes Cloudflare (proxied) → Caddy (CF Origin cert, Full strict, origin locked to CF IPs at site scope) → app :3120.
 - GoDaddy DNS state 2026-11-25: A @ and A www → 163.192.105.150 (published). Vercel project already DEPLOYMENT_DISABLED (402).
-- [ ] USER: add mkmovies.site to Cloudflare, set the 2 CF nameservers at GoDaddy, SSL Full (strict), create Origin cert.
-- [ ] Install origin cert on box (scripts/install-origin-cert.sh) → Caddy block → deploy.
+- [x] USER: zone added (NS paul/sneh.ns.cloudflare.com set at GoDaddy), both A records proxied, SSL Full (strict),
+      Universal edge cert active (2027-02-23). (2026-11-25)
+- [x] Origin cert (CF Origin CA, *.mkmovies.site + apex, to 2041-11-20) saved D:\DOWNLOAD\mkmovies-origin\ and
+      installed on box /etc/caddy/certs/mkmovies.site.{pem,key}; neighbours erp/talenttie/claimperfect still OK. (2026-11-25)
+- [ ] Origin private key was pasted into chat → recommend revoke + regenerate (save to files only) + rerun install script.
+- [ ] Caddy block goes in with the first ./scripts/deploy.sh.
+
+## DB switch (user decision 2026-11-25): MongoDB/Atlas DROPPED → local PostgreSQL 17 on the box
+- Caps are for the WHOLE app: 5 GB storage (app + pgdata + backups + logs, all inside the /opt/mkmovies loop fs)
+  and 1 GB RAM (web 704m + db 288m inside systemd slice mkmovies.slice MemoryMax=1G). Fresh DB, no data migration.
+- Deps: drizzle-orm + pg (+ drizzle-kit, @types/pg, PGlite for tests); mongoose + mongodb-memory-server removed (a398618).
+- [ ] DB-port agent: schema, migrations (drizzle/migrations, run in instrumentation.ts), all routes, PGlite tests.
+- [ ] Infra agent: db service, slice, backups (≤1 GB, nightly + pre-deploy), disk guard, docs.
+- Atlas blockers below are OBSOLETE.
 
 ## Blockers / Notes
 - BLOCKER (2026-11-25 crawl): Atlas SRV `_mongodb._tcp.cluster0.7sih1sg.mongodb.net` = NXDOMAIN (local + 8.8.8.8) →
