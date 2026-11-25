@@ -180,6 +180,37 @@ describe('logout / account switch clears per-user data', () => {
     expect(storage.getItem('mkmovies-owner')).toBe('user-a');
   });
 
+  it('authStore.logout() wipes data even when no owner was recorded (storage blocked)', async () => {
+    storage.removeItem('mkmovies-owner');
+    seed();
+    const { useAuthStore } = await import('./authStore');
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response('{"ok":true}', { status: 200 })) as typeof fetch;
+    try {
+      await useAuthStore.getState().logout();
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    expect(useAuthStore.getState().status).toBe('anonymous');
+    isEmpty();
+  });
+
+  it('authStore.logoutAll() keeps data and throws when the server refuses', async () => {
+    seed();
+    const { useAuthStore } = await import('./authStore');
+    useAuthStore.setState({ status: 'authenticated' });
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response('{"error":"DB down"}', { status: 503 })) as typeof fetch;
+    try {
+      await expect(useAuthStore.getState().logoutAll()).rejects.toThrow('DB down');
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    expect(useAuthStore.getState().status).toBe('authenticated');
+    expect(S.useWatchlistStore.getState().getActiveItems()).toHaveLength(1);
+    useAuthStore.setState({ status: 'unknown' });
+  });
+
   it('adopts unowned (pre-login) data on first sign-in', () => {
     storage.removeItem('mkmovies-owner');
     seed();
