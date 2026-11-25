@@ -51,6 +51,8 @@ async function newSession(browser: Browser, label: string, opts: { user?: TestUs
 
 /** Person ids differ per project so desktop + mobile runs never race on the same follower count. */
 const personFor = (project: string) => (isMobileProject(project) ? { id: 819, name: 'Edward Norton' } : { id: 287, name: 'Brad Pitt' });
+// The UI follow test runs in parallel with the API one: different people, or each sees the other's +1 in the shared count.
+const uiPersonFor = (project: string) => (isMobileProject(project) ? { id: 6193, name: 'Leonardo DiCaprio' } : { id: 1892, name: 'Matt Damon' });
 /** Distinct TMDB ids per project for the same reason (watchlist rows are per user anyway). */
 const movieFor = (project: string) => (isMobileProject(project) ? { id: 680, title: 'Pulp Fiction' } : { id: 155, title: 'The Dark Knight' });
 
@@ -377,7 +379,7 @@ test.describe('follows @full', () => {
   test('follow button on a person page @full @pagesB', async ({ browser }, info) => {
     requirePagesB();
     requireTmdb();
-    const person = personFor(info.project.name);
+    const person = uiPersonFor(info.project.name);
     const s = await newSession(browser, 'fol');
     const h = apiHeaders({ ip: s.ip });
     const count = async () =>
