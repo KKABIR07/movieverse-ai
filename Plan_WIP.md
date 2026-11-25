@@ -1,6 +1,11 @@
 # Plan WIP
 
 ## SESSION_CONTEXT_RETRIEVAL
+> **2026-11-25 evening RESUMED.** Pages A MERGED (425e666): tsc clean, 331 tests pass, build OK. Lint errors left
+> only in Pages B files (old movie/tv detail, watchlist, share). NOW RUNNING in parallel: Pages B agent
+> (worktree a0a44707…, merges the feature branch first) + QA agent (worktree a9c282ba…, owns package.json scripts).
+> Next: merge both → integrator step 2 (remove legacy components + three deps) → step 3 onwards below.
+>
 > **PAUSED 2026-11-25 by user ("stop we will pickup tomorrow"). RESUME HERE:**
 > `feature/oci-redesign` @ 689abe0 = MERGED: infra, backend, foundation, Postgres port (Drizzle), infra v2
 > (db + mkmovies.slice + backups + disk guard), cacheMaxMemorySize, proxy bodyless fix. 299 tests pass, tsc clean,
