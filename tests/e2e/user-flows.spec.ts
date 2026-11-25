@@ -252,18 +252,15 @@ test.describe('watchlist @full', () => {
     await s.context.grantPermissions(['clipboard-read', 'clipboard-write']);
     const listName = 'Été 🎬 映画 — ñandú';
 
-    await s.page.goto('/watchlist');
-    await s.page.getByRole('button', { name: /new list|create list/i }).first().click();
-    await s.page.getByRole('textbox').last().fill(listName);
-    await s.page.getByRole('button', { name: /^create( list)?$/i }).click();
-    await expect(s.page.getByText(listName).first()).toBeVisible();
-
+    // One watchlist per account; the list name is chosen in the share dialog and lives only in the link.
     await s.page.goto('/movie/550');
     await s.page.getByRole('button', { name: /add .*fight club.* to watchlist/i }).first().click();
 
     await s.page.goto('/watchlist');
-    await s.page.getByText(listName).first().click();
-    await s.page.getByRole('button', { name: /^share/i }).first().click();
+    await s.page.getByRole('button', { name: /^share list$/i }).click();
+    const dialog = s.page.getByRole('dialog');
+    await dialog.getByLabel('List name').fill(listName);
+    await dialog.getByRole('button', { name: /^copy link$/i }).click();
     await expect(s.page.getByText(/copied/i).first()).toBeVisible({ timeout: 5_000 });
     const link = await s.page.evaluate(() => navigator.clipboard.readText());
     expect(link).toMatch(/\/watchlist\/share\?/);
@@ -340,6 +337,8 @@ test.describe('reviews @full', () => {
     const viewer = await browser.newContext();
     const vp = await viewer.newPage();
     await vp.goto('/movie/550');
+    // Reviews live in their own tab on the detail page.
+    await vp.getByRole('tab', { name: /^reviews/i }).click();
     await expect(vp.getByText(content)).toBeVisible({ timeout: 20_000 });
     await viewer.close();
     await a.page.request.post('/api/auth/logout', { headers: apiHeaders({ ip: a.ip }) });

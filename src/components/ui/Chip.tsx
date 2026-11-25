@@ -42,7 +42,7 @@ export function Chip(props: ChipProps) {
     <>
       {icon}
       <span>{children}</span>
-      {count != null && <span className="tabular text-micro opacity-70">{count}</span>}
+      {count != null && <span className="tabular text-micro font-normal">{count}</span>}
     </>
   );
   if (typeof props.href === 'string') {

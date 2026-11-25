@@ -111,7 +111,7 @@ export function Tabs<T extends string = string>({
               )}
             >
               {item.label}
-              {item.count != null && <span className="tabular text-micro opacity-70">{item.count}</span>}
+              {item.count != null && <span className="tabular text-micro font-normal">{item.count}</span>}
             </button>
           );
         })}

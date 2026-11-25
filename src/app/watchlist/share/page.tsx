@@ -25,6 +25,7 @@ export default async function SharedWatchlistPage({ searchParams }: Props) {
     const legacy = typeof sp.data === 'string';
     return (
       <div className="px-gutter py-16">
+        <h1 className="sr-only">Shared watchlist</h1>
         <EmptyState
           icon={<Link2Off />}
           title="This share link doesn't work"

@@ -17,7 +17,7 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 import { test, expect, settle } from './support/fixtures';
-import { isPagesBRoute, PAGES_B_MERGED, requireTmdb } from './support/env';
+import { isPagesBRoute, PAGES_B_MERGED, requirePagesB, requireTmdb } from './support/env';
 
 interface RouteSpec {
   path: string;
@@ -112,11 +112,13 @@ async function checkSeo(page: Page, spec: RouteSpec, enforceExtras: boolean): Pr
   soft(await page.locator('h1').count(), 'exactly one <h1>').toBe(1);
 
   if (spec.content && enforceExtras) {
-    const desc = page.locator('head meta[name="description"]');
+    const desc = page.locator('meta[name="description"]'); // streamed into <body> for browsers, like the canonical
     soft(await desc.count(), 'one meta description').toBe(1);
     const descText = (await desc.count()) ? ((await desc.first().getAttribute('content')) ?? '') : '';
     soft(descText.trim().length, 'meta description length').toBeGreaterThan(20);
-    const canonical = page.locator('head link[rel="canonical"]');
+    // Next 16 streams generateMetadata output into <body> for browsers on dynamic routes (it stays in <head> for
+    // HTML-limited bots), so accept it anywhere here; "detail metadata is in <head> for bots" checks the bot case.
+    const canonical = page.locator('link[rel="canonical"]');
     const nCanonical = await canonical.count();
     soft(nCanonical, 'one canonical link').toBe(1);
     if (nCanonical) soft(await canonical.first().getAttribute('href'), 'absolute canonical URL').toMatch(/^https?:\/\//);
@@ -203,6 +205,20 @@ test.describe('crawl @smoke', () => {
       await checkHardContract(page);
       // A 404 page must not be indexable.
       if (robots.length) expect.soft(noindex, 'robots meta on a 404 says noindex').toBe(true);
+    });
+  }
+});
+
+test.describe('detail metadata is in <head> for bots @smoke @pagesB', () => {
+  for (const path of ['/movie/550', '/tv/1399', '/person/287']) {
+    test(`${path} canonical + description in <head> for Bingbot @smoke @pagesB`, async ({ request }) => {
+      requirePagesB();
+      requireTmdb();
+      const res = await request.get(path, { headers: { 'user-agent': 'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)' } });
+      expect(res.status()).toBe(200);
+      const head = (await res.text()).split('</head>')[0];
+      expect(head).toMatch(new RegExp(`<link rel="canonical" href="https?://[^"]+${path}"`));
+      expect(head).toMatch(/<meta name="description" content="[^"]{20,}"/);
     });
   }
 });

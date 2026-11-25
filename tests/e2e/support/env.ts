@@ -27,7 +27,7 @@ const cap = (name: string): Cap => {
 
 export const DB_STATE = (): Cap => cap('E2E_DB');
 export const TMDB_STATE = (): Cap => cap('E2E_TMDB');
-export const PAGES_B_MERGED = (): boolean => process.env.E2E_PAGES_B === '1';
+export const PAGES_B_MERGED = (): boolean => process.env.E2E_PAGES_B !== '0';
 const REQUIRE_ALL = (): boolean => process.env.E2E_REQUIRE_ALL === '1';
 
 export const DB_SKIP_REASON =
