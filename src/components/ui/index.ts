@@ -7,7 +7,7 @@ export { PageHeader, type PageHeaderProps } from './PageHeader';
 export { Pagination, TMDB_MAX_PAGE, type PaginationProps } from './Pagination';
 export { paginationRange, type PageToken } from './paginationRange';
 export { Dialog, type DialogProps, type DialogSize } from './Dialog';
-export { Skeleton, MediaCardSkeleton, MovieCardSkeleton, MovieDetailSkeleton, type SkeletonVariant } from './Skeleton';
+export { Skeleton, MediaCardSkeleton, type SkeletonVariant } from './Skeleton';
 export { EmptyState, ErrorState, type EmptyStateProps, type ErrorStateProps } from './EmptyState';
 export { Rating, type RatingProps } from './Rating';
 export { Tabs, type TabsProps, type TabItem } from './Tabs';

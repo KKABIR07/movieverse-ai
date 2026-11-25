@@ -52,21 +52,3 @@ export function MediaCardSkeleton({ className }: { className?: string }) {
   );
 }
 
-/** @deprecated use <MediaCardSkeleton /> or <Skeleton variant="card" />. Kept for pre-redesign pages. */
-export function MovieCardSkeleton() {
-  return <MediaCardSkeleton />;
-}
-
-/** Detail-page placeholder: backdrop + title block. */
-export function MovieDetailSkeleton() {
-  return (
-    <div aria-hidden className="space-y-6">
-      <div className="skeleton h-[60vh] w-full" />
-      <div className="px-gutter space-y-4">
-        <div className="skeleton h-10 w-2/3 rounded-chip" />
-        <div className="skeleton h-6 w-1/3 rounded-chip" />
-        <div className="skeleton h-32 w-full rounded-card" />
-      </div>
-    </div>
-  );
-}
