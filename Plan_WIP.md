@@ -13,6 +13,9 @@
 > aria-controls; pagination contrast; password hint 6→8. 419 unit tests, lint clean. Full `node scripts/qa/run-all.mjs`
 > running (throwaway pg container mkmovies-qa-pg :5434, E2E_PAGES_B=1, dns shim in scratchpad). Log: scratchpad/qa-run.log.
 > Soak note from QA: uncapped heap grew 124→894 MB in 90 s → re-soak on the box with --docker mkmovies-web.
+> UPDATE 3: full QA GREEN (3efdd1f): typecheck, vitest 419, build, bundle scan 0 leaks, Playwright 169 pass / 0 fail /
+> 7 viewport skips, Lighthouse home 93/100/100/100 desktop, 89 mobile; detail 98 / 86. Screenshots in
+> scratchpad/shots, local prod server on :3000. WAITING: user approval of screenshots + OK to push TMDB_BEARER → deploy.
 >
 > **PAUSED 2026-11-25 by user ("stop we will pickup tomorrow"). RESUME HERE:**
 > `feature/oci-redesign` @ 689abe0 = MERGED: infra, backend, foundation, Postgres port (Drizzle), infra v2
