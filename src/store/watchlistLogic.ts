@@ -21,7 +21,7 @@ export interface WatchlistPersisted {
 }
 
 export const DEFAULT_LIST_ID = 'default';
-export const WATCHLIST_VERSION = 3;
+export const WATCHLIST_VERSION = 4;
 
 export function watchKey(id: number, mediaType: MediaType): string {
   return `${mediaType}:${id}`;
@@ -93,6 +93,7 @@ function normalizeItems(items: unknown): WatchlistItem[] {
  * v0/v1: `{ items: WatchlistItem[] }` (single flat list)
  * v2:    `{ lists, activeListId }` keyed by bare id
  * v3:    same shape, every item has media_type, deduped by `${type}:${id}`
+ * v4:    every list folded into the default list (the server watchlist is a single list)
  */
 export function migrateWatchlist(persisted: unknown, version: number): WatchlistPersisted {
   const p = (persisted ?? {}) as { items?: unknown; lists?: unknown; activeListId?: unknown };
@@ -112,12 +113,41 @@ export function migrateWatchlist(persisted: unknown, version: number): Watchlist
     if (!lists.length) lists = [defaultList()];
   }
 
+  if (version < 4) {
+    // v4: one list. The server watchlist is a single list, so custom local lists are folded
+    // into the default one (deduped, newest first) instead of silently becoming unsyncable.
+    return { lists: [flattenLists(lists)], activeListId: DEFAULT_LIST_ID };
+  }
+
   const activeListId =
     typeof p.activeListId === 'string' && lists.some((l) => l.id === p.activeListId)
       ? (p.activeListId as string)
       : lists[0].id;
 
   return { lists, activeListId };
+}
+
+/** Merge every list into the default one: unique by key, newest addedAt first. */
+export function flattenLists(lists: readonly WatchlistList[]): WatchlistList {
+  const base = lists.find((l) => l.id === DEFAULT_LIST_ID);
+  const byKey = new Map<string, WatchlistItem>();
+  for (const l of lists) {
+    for (const i of l.items) {
+      const k = itemKey(i);
+      const prev = byKey.get(k);
+      if (!prev || (Date.parse(i.addedAt) || 0) > (Date.parse(prev.addedAt) || 0)) byKey.set(k, i);
+    }
+  }
+  const items = [...byKey.values()]
+    .map((it, idx) => ({ it, idx }))
+    .sort((a, b) => (Date.parse(b.it.addedAt) || 0) - (Date.parse(a.it.addedAt) || 0) || a.idx - b.idx)
+    .map((x) => x.it);
+  return {
+    id: DEFAULT_LIST_ID,
+    name: base?.name || 'My Watchlist',
+    createdAt: base?.createdAt ?? lists[0]?.createdAt ?? new Date().toISOString(),
+    items,
+  };
 }
 
 /** Total items across every list (unique by key). */

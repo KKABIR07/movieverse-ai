@@ -76,13 +76,33 @@ export function reconcileUserScope(status: AuthStatus, userId: string | null): v
   }
   const decision = decideUserScope(prevOwner, status, userId);
   if (decision.clear) clearUserScopedData();
-  if (decision.nextOwner === undefined || !storage) return;
-  try {
-    if (decision.nextOwner === null) storage.removeItem(OWNER_STORAGE_KEY);
-    else storage.setItem(OWNER_STORAGE_KEY, decision.nextOwner);
-  } catch {
-    /* ignore */
+  if (decision.nextOwner !== undefined && storage) {
+    try {
+      if (decision.nextOwner === null) storage.removeItem(OWNER_STORAGE_KEY);
+      else storage.setItem(OWNER_STORAGE_KEY, decision.nextOwner);
+    } catch {
+      /* ignore */
+    }
   }
+  // Signed in: the server watchlist becomes the source of truth (local items are merged once).
+  if (status === 'authenticated' && userId) {
+    void useWatchlistStore.getState().syncFromServer(userId);
+    watchFocusRefresh();
+  }
+}
+
+let focusListener = false;
+let lastRefresh = 0;
+/** Re-read the server watchlist when the tab becomes visible again (multi-device), at most once a minute. */
+function watchFocusRefresh(): void {
+  if (focusListener || typeof document === 'undefined' || typeof document.addEventListener !== 'function') return;
+  focusListener = true;
+  lastRefresh = Date.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || Date.now() - lastRefresh < 60_000) return;
+    lastRefresh = Date.now();
+    void useWatchlistStore.getState().refreshFromServer();
+  });
 }
 
 /** Remove keys from older builds that should no longer exist. */

@@ -102,19 +102,43 @@ describe('migrateWatchlist', () => {
       activeListId: 'list_2',
     };
     const out = migrateWatchlist(v2, 2);
+    expect(out.lists).toHaveLength(1);
+    expect(out.lists[0]).toMatchObject({ id: 'default', name: 'Mine' });
     expect(out.lists[0].items.map(itemKey)).toEqual(['movie:1', 'tv:1']);
-    expect(out.lists[1]).toMatchObject({ id: 'list_2', name: 'My Watchlist', items: [] });
-    expect(out.activeListId).toBe('list_2');
+    expect(out.activeListId).toBe('default');
   });
 
-  it('repairs a dangling activeListId and empty state', () => {
-    expect(migrateWatchlist({ lists: [], activeListId: 'gone' }, 2).activeListId).toBe('default');
+  it('v4 folds custom lists into the default list, deduped, newest first', () => {
+    const v3 = {
+      lists: [
+        { id: 'default', name: 'Mine', createdAt: 'X', items: [{ ...movie(1), addedAt: '2024-01-01T00:00:00Z' }] },
+        {
+          id: 'list_2',
+          name: 'Weekend',
+          createdAt: 'Y',
+          items: [
+            { ...show(2), addedAt: '2024-03-01T00:00:00Z' },
+            { ...movie(1), addedAt: '2024-02-01T00:00:00Z' },
+          ],
+        },
+      ],
+      activeListId: 'list_2',
+    };
+    const out = migrateWatchlist(v3, 3);
+    expect(out.activeListId).toBe('default');
+    expect(out.lists).toHaveLength(1);
+    expect(out.lists[0].items.map(itemKey)).toEqual(['tv:2', 'movie:1']);
+    expect(out.lists[0].items[1].addedAt).toBe('2024-02-01T00:00:00Z');
+  });
+
+  it('keeps v4 state as is and repairs a dangling activeListId / empty state', () => {
+    expect(migrateWatchlist({ lists: [], activeListId: 'gone' }, 4).activeListId).toBe('default');
     expect(migrateWatchlist(undefined, 0).lists[0].items).toEqual([]);
-    expect(migrateWatchlist({ lists: [{ id: 'a', items: [] }], activeListId: 'gone' }, 2).activeListId).toBe('a');
+    expect(migrateWatchlist({ lists: [{ id: 'a', items: [] }], activeListId: 'gone' }, 4).activeListId).toBe('a');
   });
 
-  it('is at version 3', () => {
-    expect(WATCHLIST_VERSION).toBe(3);
+  it('is at version 4', () => {
+    expect(WATCHLIST_VERSION).toBe(4);
   });
 });
 
