@@ -1,5 +1,3 @@
-'use client';
-
 import type { ReactNode } from 'react';
 import { MediaCardSkeleton } from '@/components/ui/Skeleton';
 import { cn } from '@/components/ui/cn';

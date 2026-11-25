@@ -5,14 +5,7 @@ export { Top10Rail, type Top10RailProps } from './Top10Rail';
 export { Backdrop, HeroFrame, type BackdropProps, type HeroFrameProps, type ScrimKind } from './Backdrop';
 export { MediaGrid, MEDIA_GRID_COLS, type MediaGridProps } from './MediaGrid';
 export { WatchlistButton, type WatchlistButtonProps } from './WatchlistButton';
-export {
-  tmdbPosterLoader,
-  tmdbBackdropLoader,
-  tmdbProfileLoader,
-  tmdbLogoLoader,
-  tmdbUrl,
-  POSTER_SIZES,
-} from './tmdbImage';
+export { tmdbUrl, posterSrc, backdropSrc, profileSrc, POSTER_SIZES } from './tmdbImage';
 export {
   toMediaSummary,
   toWatchlistItem,

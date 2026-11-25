@@ -1,9 +1,7 @@
-'use client';
-
 import Image from 'next/image';
 import type { ReactNode } from 'react';
 import { cn } from '@/components/ui/cn';
-import { tmdbBackdropLoader } from './tmdbImage';
+import { backdropSrc } from './tmdbImage';
 
 export type ScrimKind = 'bottom' | 'left' | 'hero' | 'full' | 'none';
 
@@ -44,8 +42,7 @@ export function Backdrop({ path, alt = '', preload = false, sizes = '100vw', scr
     <div className={cn('absolute inset-0 overflow-hidden bg-surface-1', className)}>
       {path && (
         <Image
-          loader={tmdbBackdropLoader}
-          src={path}
+          src={backdropSrc(path)!}
           alt={alt}
           fill
           sizes={sizes}

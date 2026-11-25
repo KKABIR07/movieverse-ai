@@ -10,7 +10,7 @@ import { useDebounced } from '@/lib/hooks/useDebounced';
 import { formatYear } from '@/lib/format';
 import { Dialog } from '@/components/ui/Dialog';
 import { cn } from '@/components/ui/cn';
-import { tmdbPosterLoader, tmdbProfileLoader } from '@/components/media/tmdbImage';
+import { tmdbUrl } from '@/components/media/tmdbImage';
 import type { SearchMultiResult } from '@/types/tmdb';
 import { pushRecent, readRecent, writeRecent } from './recentSearches';
 
@@ -47,8 +47,7 @@ function ResultThumb({ r }: { r: SearchMultiResult }) {
     >
       {path ? (
         <Image
-          loader={r.media_type === 'person' ? tmdbProfileLoader : tmdbPosterLoader}
-          src={path}
+          src={tmdbUrl(path, 'w185')!}
           alt=""
           fill
           sizes="40px"

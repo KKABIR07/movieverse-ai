@@ -1,5 +1,3 @@
-'use client';
-
 import Image from 'next/image';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
@@ -8,7 +6,7 @@ import { Rating } from '@/components/ui/Rating';
 import { cn } from '@/components/ui/cn';
 import { formatYear } from '@/lib/format';
 import { Rail } from './Rail';
-import { tmdbPosterLoader } from './tmdbImage';
+import { posterSrc } from './tmdbImage';
 import { WatchlistButton } from './WatchlistButton';
 import { mediaHref, toMediaSummary, type MediaInput, type MediaType } from './types';
 
@@ -69,8 +67,7 @@ export function Top10Rail({ title = 'Top 10 this week', href, eyebrow, items, me
               <span className="relative block aspect-[2/3] overflow-hidden rounded-card bg-surface-2 ring-1 ring-inset ring-white/5">
                 {m.posterPath ? (
                   <Image
-                    loader={tmdbPosterLoader}
-                    src={m.posterPath}
+                    src={posterSrc(m.posterPath)!}
                     alt=""
                     fill
                     sizes="(min-width: 640px) 175px, 38vw"

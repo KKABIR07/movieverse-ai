@@ -10,7 +10,7 @@ import { useCanHover } from '@/lib/hooks/useMediaQuery';
 import { usePrefersReducedMotion } from '@/lib/hooks/usePrefersReducedMotion';
 import { Rating } from '@/components/ui/Rating';
 import { cn } from '@/components/ui/cn';
-import { tmdbPosterLoader, POSTER_SIZES } from './tmdbImage';
+import { posterSrc, POSTER_SIZES } from './tmdbImage';
 import { WatchlistButton } from './WatchlistButton';
 import { mediaHref, toMediaSummary, type MediaInput, type MediaType } from './types';
 
@@ -110,8 +110,7 @@ function MediaCardImpl({
         <div className="relative aspect-[2/3] overflow-hidden rounded-card bg-surface-2 ring-1 ring-inset ring-white/5">
           {m.posterPath ? (
             <Image
-              loader={tmdbPosterLoader}
-              src={m.posterPath}
+              src={posterSrc(m.posterPath)!}
               alt=""
               fill
               sizes={sizes}

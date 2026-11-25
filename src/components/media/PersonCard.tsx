@@ -1,11 +1,9 @@
-'use client';
-
 import Image from 'next/image';
 import Link from 'next/link';
-import { memo, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { User } from 'lucide-react';
 import { cn } from '@/components/ui/cn';
-import { tmdbProfileLoader } from './tmdbImage';
+import { profileSrc } from './tmdbImage';
 
 export interface PersonLike {
   id: number;
@@ -38,7 +36,7 @@ const defaultSizes = { sm: '64px', md: '96px', lg: '128px' };
  * @example <PersonCard person={castMember} />
  * @example <PersonCard person={p} size="lg" footer={<FollowButton person={p} />} />
  */
-function PersonCardImpl({ person, subtitle, footer, size = 'md', sizes, className }: PersonCardProps) {
+export function PersonCard({ person, subtitle, footer, size = 'md', sizes, className }: PersonCardProps) {
   const sub = subtitle ?? person.character ?? person.job ?? person.known_for_department;
   return (
     <div className={cn('group/person flex flex-col items-center text-center', className)}>
@@ -52,8 +50,7 @@ function PersonCardImpl({ person, subtitle, footer, size = 'md', sizes, classNam
         >
           {person.profile_path ? (
             <Image
-              loader={tmdbProfileLoader}
-              src={person.profile_path}
+              src={profileSrc(person.profile_path)!}
               alt=""
               fill
               sizes={sizes ?? defaultSizes[size]}
@@ -73,4 +70,3 @@ function PersonCardImpl({ person, subtitle, footer, size = 'md', sizes, classNam
   );
 }
 
-export const PersonCard = memo(PersonCardImpl);

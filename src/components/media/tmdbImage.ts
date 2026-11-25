@@ -1,35 +1,22 @@
-import type { ImageLoader } from 'next/image';
-
 /**
- * next/image loaders that request TMDB's own pre-sized renditions straight from
- * its CDN (no /_next/image re-encoding, no Vercel optimisation cost).
- * Pass the TMDB *path* ("/abc.jpg") as `src`.
+ * TMDB image URLs for next/image.
+ *
+ * next.config.ts wires a global `images.loaderFile` (src/lib/image-loader.ts) that rewrites any
+ * `https://image.tmdb.org/t/p/<size>/<file>` URL to the TMDB CDN bucket that best fits the width
+ * the browser asks for (w92…w1280/original). No server-side optimisation happens, so components
+ * just pass a full TMDB URL plus an accurate `sizes` attribute and the loader picks
+ * w185 / w342 / w500 etc. from the srcset.
  */
 const CDN = 'https://image.tmdb.org/t/p';
 
-const pick = (width: number, steps: readonly [number, string][], fallback: string) =>
-  steps.find(([w]) => width <= w)?.[1] ?? fallback;
-
-/** Posters: w185 / w342 / w500 (w780 for very large slots). */
-export const tmdbPosterLoader: ImageLoader = ({ src, width }) =>
-  `${CDN}/${pick(width, [[185, 'w185'], [342, 'w342'], [500, 'w500']], 'w780')}${src}`;
-
-/** Backdrops: w300 / w780 / w1280 / original. */
-export const tmdbBackdropLoader: ImageLoader = ({ src, width }) =>
-  `${CDN}/${pick(width, [[300, 'w300'], [780, 'w780'], [1280, 'w1280']], 'original')}${src}`;
-
-/** Profile photos: w45 / w185 / h632. */
-export const tmdbProfileLoader: ImageLoader = ({ src, width }) =>
-  `${CDN}/${pick(width, [[45, 'w45'], [185, 'w185']], 'h632')}${src}`;
-
-/** Logos (company / network / title treatments): w92 / w185 / w300 / w500. */
-export const tmdbLogoLoader: ImageLoader = ({ src, width }) =>
-  `${CDN}/${pick(width, [[92, 'w92'], [185, 'w185'], [300, 'w300']], 'w500')}${src}`;
-
-/** Plain URL helper when you need a string (og:image, CSS background). */
+/** Full TMDB URL for a path, or null. `size` is only the fallback when no loader runs. */
 export function tmdbUrl(path: string | null | undefined, size: string = 'w500'): string | null {
   return path ? `${CDN}/${size}${path}` : null;
 }
+
+export const posterSrc = (path: string | null | undefined) => tmdbUrl(path, 'w500');
+export const backdropSrc = (path: string | null | undefined) => tmdbUrl(path, 'w1280');
+export const profileSrc = (path: string | null | undefined) => tmdbUrl(path, 'w185');
 
 /** `sizes` presets matching the shell's grids and rails. */
 export const POSTER_SIZES = {
