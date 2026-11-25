@@ -167,9 +167,12 @@ setkey() { # setkey KEY VALUE  — replace or append without sed-escaping proble
 }
 delkey() { K="$1" awk 'BEGIN{k=ENVIRON["K"]} index($0, k"=")!=1' .env > .env.tmp && cat .env.tmp > .env && rm -f .env.tmp; }
 umask 077
+# gen BYTES — random hex; fails loudly (assignment under set -e) instead of silently writing an empty secret.
+gen() { local v; v="$(openssl rand -hex "$1")"; [ ${#v} -eq $(( $1 * 2 )) ] || { echo "openssl rand failed" >&2; exit 3; }; printf %s "$v"; }
+command -v openssl >/dev/null || { echo "openssl is required on the box to generate secrets" >&2; exit 3; }
 if [ ! -f .env ]; then
   cp .env.example .env
-  setkey JWT_SECRET "$(openssl rand -hex 48)"
+  s="$(gen 48)"; setkey JWT_SECRET "$s"
   echo "Created .env from .env.example with a generated JWT_SECRET."
 fi
 chmod 600 .env
@@ -177,7 +180,7 @@ setkey APP_PORT "$APP_PORT"
 if grep -q '^MONGODB_URI=' .env; then delkey MONGODB_URI; echo "Removed obsolete MONGODB_URI from .env."; fi
 [ -n "$(getkey POSTGRES_USER)" ] || setkey POSTGRES_USER mkmovies
 [ -n "$(getkey POSTGRES_DB)" ] || setkey POSTGRES_DB mkmovies
-[ -n "$(getkey JWT_SECRET)" ] || { setkey JWT_SECRET "$(openssl rand -hex 48)"; echo "Generated JWT_SECRET."; }
+[ -n "$(getkey JWT_SECRET)" ] || { s="$(gen 48)"; setkey JWT_SECRET "$s"; echo "Generated JWT_SECRET."; }
 
 # POSTGRES_PASSWORD is baked into pgdata at initdb time: generate it only while no cluster exists yet.
 pg_user="$(getkey POSTGRES_USER)"; pg_db="$(getkey POSTGRES_DB)"
@@ -187,7 +190,7 @@ if [ -z "$(getkey POSTGRES_PASSWORD)" ]; then
     echo "password into .env (scripts/push-env.sh POSTGRES_PASSWORD DATABASE_URL). Not generating a new one." >&2
     exit 3
   fi
-  setkey POSTGRES_PASSWORD "$(openssl rand -hex 24)"
+  s="$(gen 24)"; setkey POSTGRES_PASSWORD "$s"
   echo "Generated POSTGRES_PASSWORD."
 fi
 pg_pw="$(getkey POSTGRES_PASSWORD)"
