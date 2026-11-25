@@ -297,3 +297,37 @@ describe('server-backed watchlist (signed in)', () => {
     }
   });
 });
+
+describe('following store hydrate vs in-flight clicks', () => {
+  const realFetch = globalThis.fetch;
+  const person = (id: number) => ({ id, name: `P${id}`, profile_path: null, known_for_department: 'Acting' });
+  const serverRow = (id: number) => ({ personId: id, personName: `P${id}` });
+
+  it('a list fetched before a follow/unfollow click does not undo it', async () => {
+    F.useFollowingStore.getState().reset();
+    F.useFollowingStore.setState({ following: [{ ...person(2), followedAt: '2024-01-01' }] });
+    // GET is held open until we release it; it reflects the server BEFORE the clicks (follows 2 and 3).
+    let releaseGet!: () => void;
+    const getGate = new Promise<void>((r) => (releaseGet = r));
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      if (method === 'GET') {
+        await getGate;
+        return new Response(JSON.stringify({ following: [serverRow(2), serverRow(3)] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ followerCount: 1 }), { status: method === 'POST' ? 201 : 200 });
+    }) as typeof fetch;
+    try {
+      const hydrating = F.useFollowingStore.getState().hydrate();
+      await F.useFollowingStore.getState().follow(person(1)); // new follow while the GET is in flight
+      await F.useFollowingStore.getState().unfollow(2); // and an unfollow
+      releaseGet();
+      await hydrating;
+      const ids = F.useFollowingStore.getState().following.map((f) => f.id).sort();
+      expect(ids).toEqual([1, 3]); // 1 kept (clicked), 2 stays unfollowed, 3 comes from the server
+    } finally {
+      globalThis.fetch = realFetch;
+      F.useFollowingStore.getState().reset();
+    }
+  });
+});

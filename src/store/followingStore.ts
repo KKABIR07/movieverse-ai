@@ -30,6 +30,14 @@ interface FollowingStore {
   reset: () => void;
 }
 
+/**
+ * People followed/unfollowed since the last hydrate() started. A list fetched before such a click must
+ * not overwrite it (seen in e2e: Follow clicked while the sign-in hydrate was in flight → the stale list
+ * flipped the button back although the server had saved it). Local state for these ids wins: it is
+ * either confirmed by the server or already rolled back.
+ */
+const touched = new Set<number>();
+
 const bump = (counts: Record<number, number>, id: number, delta: number) =>
   id in counts ? { ...counts, [id]: Math.max(0, counts[id] + delta) } : counts;
 
@@ -41,6 +49,7 @@ export const useFollowingStore = create<FollowingStore>()(
 
       follow: async (person) => {
         if (get().isFollowing(person.id)) return true;
+        touched.add(person.id);
         const entry: FollowedPerson = { ...person, followedAt: new Date().toISOString() };
         set((s) => ({ following: [entry, ...s.following], counts: bump(s.counts, person.id, 1) }));
         try {
@@ -60,6 +69,7 @@ export const useFollowingStore = create<FollowingStore>()(
       unfollow: async (personId) => {
         const prev = get().following.find((f) => f.id === personId);
         if (!prev) return true;
+        touched.add(personId);
         set((s) => ({ following: s.following.filter((f) => f.id !== personId), counts: bump(s.counts, personId, -1) }));
         try {
           const count = await followsApi.unfollow(personId);
@@ -92,14 +102,23 @@ export const useFollowingStore = create<FollowingStore>()(
 
       hydrate: async () => {
         try {
-          const following = await followsApi.list();
-          set({ following });
+          touched.clear();
+          const server = await followsApi.list();
+          set((s) => ({
+            following: [
+              ...s.following.filter((f) => touched.has(f.id)),
+              ...server.filter((f) => !touched.has(f.id)),
+            ],
+          }));
         } catch {
           /* offline / DB down: keep the cached copy */
         }
       },
 
-      reset: () => set({ following: [], counts: {} }),
+      reset: () => {
+        touched.clear();
+        set({ following: [], counts: {} });
+      },
     }),
     {
       name: 'mkmovies-following',
