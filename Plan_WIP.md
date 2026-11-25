@@ -62,6 +62,19 @@
 > Dev on this PC needs NODE_OPTIONS=--require=<scratchpad>/dev-dns.cjs (Jio blocks TMDB DNS). JWT_SECRET in
 > .env.local is a placeholder — prod gets a generated one. Mockup: https://claude.ai/artifact/25VY1mgzhLi6zz33aikZh8
 
+## Restore trailers + logo + favicon (user request 2026-11-26)
+User: "trailers not playing on the front page — you removed hover-play and the hero's always-playing trailer,
+and the design logo. Implement the favicon."
+- [ ] T1 Shared trailer helper `src/lib/media/trailers.ts` (cached key lookup via /api/tmdb, YouTube bg embed URL, mute cmd).
+- [ ] T2 Hero: muted background trailer always plays for the current slide (fade in over the backdrop, YouTube chrome
+      hidden, cover-cropped); slide stays 45 s with a trailer (8 s without); prefetch next key; Mute/Unmute button;
+      off for prefers-reduced-motion / Save-Data / paused slideshow / trailer dialog open.
+- [ ] T3 Cards: hover trailer preview ON by default for every MediaCard (pointer devices, 500 ms delay, fade in over
+      poster, 16:9 cover-cropped into 2:3), off for reduced motion.
+- [ ] T4 Logo: restore the original mark (purple gradient square + film icon) and gradient "mkmovies" wordmark.
+- [ ] T5 Favicon: /favicon.ico (16/32/48), icon.svg, apple-icon, web manifest 192/512 — original "mk" film-strip design.
+- [ ] T6 Tests (unit for helpers, e2e: favicon 200s, hover preview mounts, hero iframe mounts) → build → deploy → live check.
+
 ## Target box (verified read-only 2026-11-25)
 - mkb-007, Ubuntu arm64, 4 OCPU / 23 GiB (20 GiB free), 169 GB disk free, ext4. Docker + host Caddy.
 - Neighbors: scholaris :8090, talenttie :3100, claimperfect :3110/:8110. **mkmovies → 127.0.0.1:3120** (free).

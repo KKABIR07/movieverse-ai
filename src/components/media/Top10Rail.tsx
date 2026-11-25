@@ -8,6 +8,7 @@ import { formatYear } from '@/lib/format';
 import { Rail } from './Rail';
 import { posterSrc } from './tmdbImage';
 import { WatchlistButton } from './WatchlistButton';
+import { HoverTrailerSlot, HoverTrailerZone } from './HoverTrailer';
 import { mediaHref, toMediaSummary, type MediaInput, type MediaType } from './types';
 
 export interface Top10RailProps {
@@ -49,7 +50,7 @@ export function Top10Rail({ title = 'Top 10 this week', href, eyebrow, items, me
       className={className}
     >
       {top.map((m, i) => (
-        <div key={`${m.mediaType}:${m.id}`} className="group/top relative">
+        <HoverTrailerZone key={`${m.mediaType}:${m.id}`} id={m.id} mediaType={m.mediaType} title={m.title} className="group/top relative">
           <Link href={mediaHref(m)} className="flex items-end rounded-card outline-offset-4">
             <span className="sr-only">Number {i + 1}: </span>
             <span
@@ -76,6 +77,7 @@ export function Top10Rail({ title = 'Top 10 this week', href, eyebrow, items, me
                 ) : (
                   <Film aria-hidden className="absolute inset-0 m-auto size-8 text-fg-muted" />
                 )}
+                <HoverTrailerSlot />
                 <Rating value={m.rating} voteCount={m.voteCount} size="sm" className="absolute bottom-2 left-2" />
               </span>
               <span className="mt-2 block truncate text-caption font-semibold text-fg group-hover/top:text-accent">
@@ -87,7 +89,7 @@ export function Top10Rail({ title = 'Top 10 this week', href, eyebrow, items, me
           <div className="absolute right-2 top-2 z-20 [@media(hover:hover)]:opacity-0 group-hover/top:opacity-100 group-focus-within/top:!opacity-100 has-[[aria-pressed=true]]:!opacity-100 transition-opacity">
             <WatchlistButton item={m} />
           </div>
-        </div>
+        </HoverTrailerZone>
       ))}
     </Rail>
   );
