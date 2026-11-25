@@ -1,265 +1,127 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import Link from 'next/link';
-import { X, Shuffle, Star, Bookmark, ExternalLink, Loader2 } from 'lucide-react';
-import { tmdb, tmdbImage, formatYear } from '@/lib/tmdb';
-import { useWatchlistStore } from '@/store';
-import { useAuthStore } from '@/store/authStore';
-
-type RollType = 'movie' | 'tv';
-
-interface RollResult {
-  id: number;
-  title: string;
-  poster_path: string | null;
-  backdrop_path?: string | null;
-  vote_average: number;
-  overview?: string;
-  release_date?: string;
-  first_air_date?: string;
-  _type: RollType;
-}
-
-const ROLL_TYPES: RollType[] = ['movie', 'movie', 'movie', 'tv', 'tv', 'movie', 'tv', 'movie'];
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowRight, Film, Shuffle } from 'lucide-react';
+import { tmdb } from '@/lib/tmdb';
+import { formatYear } from '@/lib/format';
+import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
+import { ErrorState } from '@/components/ui/EmptyState';
+import { Rating } from '@/components/ui/Rating';
+import { WatchlistButton } from '@/components/media/WatchlistButton';
+import { posterSrc } from '@/components/media/tmdbImage';
+import { mediaHref, toMediaSummary, type MediaSummary } from '@/components/media/types';
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
+type Roll = { status: 'loading' } | { status: 'done'; pick: MediaSummary } | { status: 'error' };
+
+/** Pick a random well-rated popular movie or show (TMDB popular lists, pages 1–8). */
+async function rollOnce(): Promise<MediaSummary | null> {
+  const kind = Math.random() < 0.6 ? 'movie' : 'tv';
+  const page = 1 + Math.floor(Math.random() * 8);
+  const data = kind === 'movie' ? await tmdb.movie.popular(page) : await tmdb.tv.popular(page);
+  const pool = data.results
+    .map((r) => toMediaSummary(r, kind))
+    .filter((m) => m.posterPath && (m.rating ?? 0) >= 6 && (m.voteCount ?? 0) >= 100);
+  if (!pool.length) return null;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+/**
+ * "Surprise me": a random popular title in a dialog, with Roll again / Watchlist / View.
+ * Props are unchanged so the header can keep mounting it.
+ */
 export function DiceRollModal({ open, onClose }: Props) {
-  const [result, setResult] = useState<RollResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [spinning, setSpinning] = useState(false);
-  const { add, has } = useWatchlistStore();
-  const { user } = useAuthStore();
-  const [saved, setSaved] = useState(false);
+  const [roll, setRoll] = useState<Roll>({ status: 'loading' });
+  const reqId = useRef(0);
 
-  const roll = useCallback(async () => {
-    setLoading(true);
-    setSpinning(true);
-    setResult(null);
-    setSaved(false);
-
-    const type = ROLL_TYPES[Math.floor(Math.random() * ROLL_TYPES.length)];
-    const page = Math.floor(Math.random() * 8) + 1;
-
+  const doRoll = useCallback(async () => {
+    const id = ++reqId.current;
+    setRoll({ status: 'loading' });
     try {
-      if (type === 'movie') {
-        const data = await tmdb.movie.popular(page);
-        const items = data.results.filter((m) => m.poster_path && m.vote_average > 5);
-        if (items.length > 0) {
-          const picked = items[Math.floor(Math.random() * items.length)];
-          setResult({ ...picked, _type: 'movie' });
-        }
-      } else {
-        const data = await tmdb.tv.popular(page);
-        const items = data.results.filter((t) => t.poster_path && t.vote_average > 5);
-        if (items.length > 0) {
-          const picked = items[Math.floor(Math.random() * items.length)];
-          setResult({
-            id: picked.id,
-            title: picked.name,
-            poster_path: picked.poster_path,
-            backdrop_path: picked.backdrop_path,
-            vote_average: picked.vote_average,
-            overview: picked.overview,
-            first_air_date: picked.first_air_date,
-            _type: 'tv',
-          });
-        }
-      }
+      let pick = await rollOnce();
+      if (!pick) pick = await rollOnce(); // one retry when a page had nothing well-rated
+      if (id !== reqId.current) return;
+      setRoll(pick ? { status: 'done', pick } : { status: 'error' });
     } catch {
-      // silently fail — user can roll again
+      if (id === reqId.current) setRoll({ status: 'error' });
     }
-
-    setLoading(false);
-    setTimeout(() => setSpinning(false), 400);
   }, []);
 
   useEffect(() => {
-    if (open) roll();
-  }, [open]); // eslint-disable-line
-
-  // Close on Escape
-  useEffect(() => {
     if (!open) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [open, onClose]);
+    // roll when the dialog opens; the async result lands after this effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void doRoll();
+  }, [open, doRoll]);
 
-  if (!open) return null;
-
-  const year = result?.release_date
-    ? formatYear(result.release_date)
-    : result?.first_air_date
-    ? formatYear(result.first_air_date)
-    : null;
-
-  const detailHref = result ? `/${result._type}/${result.id}` : '#';
-
-  const handleSave = () => {
-    if (!result || !user) {
-      window.dispatchEvent(new CustomEvent('mkmovies:openAuth', { detail: { tab: 'login' } }));
-      return;
-    }
-    add({
-      id: result.id,
-      title: result.title,
-      poster_path: result.poster_path,
-      vote_average: result.vote_average,
-      release_date: result.release_date ?? result.first_air_date ?? '',
-      media_type: result._type,
-    });
-    setSaved(true);
-  };
+  const pick = roll.status === 'done' ? roll.pick : null;
 
   return (
-    <div
-      className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-      onClick={onClose}
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Surprise me"
+      description="A random pick from what is popular right now."
+      size="md"
+      footer={
+        <>
+          <Button variant="ghost" leadingIcon={<Shuffle />} onClick={() => void doRoll()} loading={roll.status === 'loading'}>
+            Roll again
+          </Button>
+          {pick && (
+            <Button href={mediaHref(pick)} onClick={onClose} trailingIcon={<ArrowRight />}>
+              View details
+            </Button>
+          )}
+        </>
+      }
     >
-      <style>{`
-        @keyframes mv-dice-spin {
-          0%   { transform: rotate(0deg) scale(1); }
-          25%  { transform: rotate(180deg) scale(1.3); }
-          50%  { transform: rotate(360deg) scale(1); }
-          75%  { transform: rotate(540deg) scale(0.8); }
-          100% { transform: rotate(720deg) scale(1); }
-        }
-        @keyframes mv-dice-result {
-          from { opacity: 0; transform: translateY(12px) scale(0.95); }
-          to   { opacity: 1; transform: translateY(0) scale(1); }
-        }
-      `}</style>
-
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/75 backdrop-blur-md" />
-
-      {/* Modal */}
-      <div
-        className="relative z-10 w-full max-w-sm glass rounded-3xl border border-[var(--border)] shadow-[0_32px_80px_rgba(0,0,0,0.8)] overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-3">
-          <div className="flex items-center gap-2.5">
-            <div
-              className="w-8 h-8 rounded-xl bg-[var(--accent-primary)]/20 border border-[var(--accent-primary)]/30 flex items-center justify-center"
-              style={{ animation: spinning ? 'mv-dice-spin 0.6s ease-out' : 'none' }}
-            >
-              <Shuffle size={16} className="text-[var(--accent-primary)]" />
+      <div aria-live="polite" aria-busy={roll.status === 'loading'}>
+        {roll.status === 'error' ? (
+          <ErrorState compact title="No pick this time" description="TMDB did not answer. Roll again in a moment." />
+        ) : (
+          <div className="flex gap-4">
+            <div className="relative aspect-[2/3] w-28 shrink-0 overflow-hidden rounded-card bg-surface-2">
+              {pick?.posterPath ? (
+                <Image src={posterSrc(pick.posterPath)!} alt="" fill sizes="112px" className="object-cover" />
+              ) : roll.status === 'loading' ? (
+                <div aria-hidden className="skeleton absolute inset-0" />
+              ) : (
+                <Film aria-hidden className="absolute inset-0 m-auto size-8 text-fg-muted" />
+              )}
             </div>
-            <div>
-              <p className="text-sm font-black text-[var(--text-primary)]">Random Pick</p>
-              <p className="text-[10px] text-[var(--text-muted)]">What should I watch next?</p>
+            <div className="min-w-0 flex-1">
+              {pick ? (
+                <>
+                  <p className="text-h3 text-fg line-clamp-2">{pick.title}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-caption text-fg-muted tabular">
+                    <Rating value={pick.rating} voteCount={pick.voteCount} size="sm" />
+                    <span>{formatYear(pick.date, '')}</span>
+                    <span aria-hidden>·</span>
+                    <span>{pick.mediaType === 'tv' ? 'TV series' : 'Movie'}</span>
+                  </div>
+                  {pick.overview && <p className="mt-3 line-clamp-4 text-caption text-fg-secondary">{pick.overview}</p>}
+                  <WatchlistButton item={pick} appearance="button" size="sm" className="mt-4" />
+                </>
+              ) : (
+                <div aria-hidden className="flex flex-col gap-2">
+                  <div className="skeleton h-5 w-3/4 rounded-chip" />
+                  <div className="skeleton h-3.5 w-1/3 rounded-chip" />
+                  <div className="skeleton mt-2 h-3 w-full rounded-chip" />
+                  <div className="skeleton h-3 w-5/6 rounded-chip" />
+                </div>
+              )}
+              {roll.status === 'loading' && <span className="sr-only">Rolling…</span>}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
-          >
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="px-5 pb-5 space-y-4">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-3">
-              <div
-                style={{ animation: 'mv-dice-spin 0.8s ease-out infinite' }}
-                className="w-10 h-10 rounded-xl bg-[var(--accent-primary)]/20 flex items-center justify-center"
-              >
-                <Shuffle size={20} className="text-[var(--accent-primary)]" />
-              </div>
-              <p className="text-sm text-[var(--text-muted)]">Rolling the dice…</p>
-            </div>
-          ) : result ? (
-            <div style={{ animation: 'mv-dice-result 0.3s ease-out' }}>
-              {/* Poster + info row */}
-              <div className="flex gap-4">
-                <div className="flex-shrink-0 relative rounded-xl overflow-hidden shadow-lg" style={{ width: 90, height: 134 }}>
-                  {result.poster_path ? (
-                    <Image
-                      src={tmdbImage(result.poster_path, 'w185')}
-                      alt={result.title}
-                      fill
-                      className="object-cover"
-                      sizes="90px"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 bg-[var(--bg-card)] flex items-center justify-center text-2xl">🎬</div>
-                  )}
-                  {/* Type badge */}
-                  <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase bg-black/70 backdrop-blur-sm text-white">
-                    {result._type === 'tv' ? 'TV' : 'Movie'}
-                  </div>
-                </div>
-
-                <div className="flex-1 min-w-0 pt-1 space-y-1.5">
-                  <h3 className="text-base font-black text-[var(--text-primary)] leading-tight line-clamp-2">
-                    {result.title}
-                  </h3>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="flex items-center gap-1">
-                      <Star size={11} className="text-amber-400 fill-current" />
-                      <span className="text-xs font-bold text-amber-300">{result.vote_average.toFixed(1)}</span>
-                    </div>
-                    {year && <span className="text-xs text-[var(--text-muted)]">{year}</span>}
-                  </div>
-                  {result.overview && (
-                    <p className="text-xs text-[var(--text-muted)] leading-relaxed line-clamp-4">
-                      {result.overview}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex gap-2 pt-2">
-                <button
-                  onClick={roll}
-                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg-hover)] text-sm font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent-primary)]/50 transition-all"
-                >
-                  <Shuffle size={14} />
-                  Roll Again
-                </button>
-                <button
-                  onClick={handleSave}
-                  disabled={saved || has(result.id)}
-                  className={`flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
-                    saved || has(result.id)
-                      ? 'border-green-500/40 bg-green-500/10 text-green-400'
-                      : 'border-[var(--border)] bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent-primary)]/50'
-                  }`}
-                >
-                  <Bookmark size={14} className={saved || has(result.id) ? 'fill-current' : ''} />
-                  {saved || has(result.id) ? 'Saved' : 'Save'}
-                </button>
-                <Link
-                  href={detailHref}
-                  onClick={onClose}
-                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-[var(--accent-primary)] text-white text-sm font-semibold hover:bg-[var(--accent-secondary)] transition-colors"
-                >
-                  <ExternalLink size={14} />
-                  View
-                </Link>
-              </div>
-            </div>
-          ) : (
-            <div className="py-8 text-center text-[var(--text-muted)] text-sm">
-              Could not load a suggestion. Try rolling again.
-              <button onClick={roll} className="block mx-auto mt-3 text-[var(--accent-primary)] hover:underline">
-                Roll Again
-              </button>
-            </div>
-          )}
-        </div>
+        )}
       </div>
-    </div>
+    </Dialog>
   );
 }
