@@ -29,8 +29,20 @@ describe('mergeCredits', () => {
   it('merges multiple roles for the same title and keeps movie/tv with the same id apart', () => {
     const out = mergeCredits(
       [
-        { id: 5, media_type: 'tv', name: 'Show', character: 'A', episode_count: 3 },
-        { id: 5, media_type: 'tv', name: 'Show', character: 'B', episode_count: 7 },
+        {
+          id: 5,
+          media_type: 'tv',
+          name: 'Show',
+          character: 'A',
+          episode_count: 3,
+        },
+        {
+          id: 5,
+          media_type: 'tv',
+          name: 'Show',
+          character: 'B',
+          episode_count: 7,
+        },
         { id: 5, media_type: 'tv', name: 'Show', character: 'A' },
         { id: 5, media_type: 'movie', title: 'Film', character: 'C' },
       ],
@@ -49,8 +61,20 @@ describe('mergeCredits', () => {
         { id: 0, media_type: 'movie' },
         { id: 'x', media_type: 'movie' },
         { id: 3, media_type: 'person' },
-        { id: 4, media_type: 'movie', title: 'Dir', job: 'Director', department: 'Directing' },
-        { id: 4, media_type: 'movie', title: 'Dir', job: 'Writer', department: 'Writing' },
+        {
+          id: 4,
+          media_type: 'movie',
+          title: 'Dir',
+          job: 'Director',
+          department: 'Directing',
+        },
+        {
+          id: 4,
+          media_type: 'movie',
+          title: 'Dir',
+          job: 'Writer',
+          department: 'Writing',
+        },
       ],
       'crew',
     );
@@ -123,10 +147,32 @@ describe('buildFilmography', () => {
     const f = buildFilmography({
       combined_credits: {
         cast: [
-          { id: 1, media_type: 'movie', title: 'M', character: 'x', poster_path: '/a.jpg', vote_count: 9 },
-          { id: 2, media_type: 'tv', name: 'S', character: 'y', poster_path: '/b.jpg', vote_count: 3 },
+          {
+            id: 1,
+            media_type: 'movie',
+            title: 'M',
+            character: 'x',
+            poster_path: '/a.jpg',
+            vote_count: 9,
+          },
+          {
+            id: 2,
+            media_type: 'tv',
+            name: 'S',
+            character: 'y',
+            poster_path: '/b.jpg',
+            vote_count: 3,
+          },
         ],
-        crew: [{ id: 1, media_type: 'movie', title: 'M', job: 'Director', department: 'Directing' }],
+        crew: [
+          {
+            id: 1,
+            media_type: 'movie',
+            title: 'M',
+            job: 'Director',
+            department: 'Directing',
+          },
+        ],
       },
     } as never);
     expect(f.movies).toHaveLength(1);

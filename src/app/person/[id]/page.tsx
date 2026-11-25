@@ -25,7 +25,11 @@ type Props = { params: Promise<{ id: string }> };
 /** One TMDB request per render (generateMetadata + page share it). */
 const loadPerson = cache((id: number) => getPerson(id, 'combined_credits,external_ids'));
 
-const GENDER: Record<number, string> = { 1: 'Female', 2: 'Male', 3: 'Non-binary' };
+const GENDER: Record<number, string> = {
+  1: 'Female',
+  2: 'Male',
+  3: 'Non-binary',
+};
 
 const toSummary = (c: PersonCredit): MediaSummary => ({
   id: c.id,
@@ -46,8 +50,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const person = id ? await loadPerson(id) : null;
   if (!person) return { title: 'Person not found', robots: { index: false } };
   const role = person.known_for_department ? `${person.known_for_department === 'Acting' ? 'Actor' : person.known_for_department}` : '';
-  const description =
-    clampDescription(person.biography) || `${person.name}${role ? ` (${role})` : ''}: biography, movies and TV shows.`;
+  const description = clampDescription(person.biography) || `${person.name}${role ? ` (${role})` : ''}: biography, movies and TV shows.`;
   const image = tmdbUrl(person.profile_path, 'h632');
   return {
     metadataBase,
@@ -61,7 +64,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: `/person/${person.id}`,
       images: image ? [{ url: image, width: 421, height: 632, alt: person.name }] : undefined,
     },
-    twitter: { card: 'summary', title: person.name, description, images: image ? [image] : undefined },
+    twitter: {
+      card: 'summary',
+      title: person.name,
+      description,
+      images: image ? [image] : undefined,
+    },
   };
 }
 
@@ -185,8 +193,14 @@ export default async function PersonPage({ params }: Props) {
             title="Personal info"
             facts={[
               { label: 'Known for', value: person.known_for_department },
-              { label: 'Credits', value: film.totalTitles ? <span className="tabular">{film.totalTitles} titles</span> : null },
-              { label: 'Gender', value: person.gender ? GENDER[person.gender] : null },
+              {
+                label: 'Credits',
+                value: film.totalTitles ? <span className="tabular">{film.totalTitles} titles</span> : null,
+              },
+              {
+                label: 'Gender',
+                value: person.gender ? GENDER[person.gender] : null,
+              },
               { label: 'Birthday', value: dateLong(person.birthday) },
               { label: 'Died', value: dateLong(person.deathday) },
               { label: 'Place of birth', value: person.place_of_birth },

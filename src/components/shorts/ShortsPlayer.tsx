@@ -91,7 +91,14 @@ export function ShortsPlayer({ titles }: { titles: ShortTitle[] }) {
       const lists = await Promise.all(
         ordered.map((t) =>
           fetchMovieShorts(
-            { id: t.id, title: t.title, poster_path: t.posterPath, vote_average: t.rating, type: t.mediaType, date: t.date ?? undefined },
+            {
+              id: t.id,
+              title: t.title,
+              poster_path: t.posterPath,
+              vote_average: t.rating,
+              type: t.mediaType,
+              date: t.date ?? undefined,
+            },
             3,
           ),
         ),
@@ -241,7 +248,14 @@ export function ShortsPlayer({ titles }: { titles: ShortTitle[] }) {
           <span className="text-micro tabular text-fg-muted" aria-hidden>
             {pos + 1}/{total}
           </span>
-          <IconButton label="Next short" icon={<ChevronDown />} variant="secondary" round onClick={() => go(1)} disabled={pos >= total - 1} />
+          <IconButton
+            label="Next short"
+            icon={<ChevronDown />}
+            variant="secondary"
+            round
+            onClick={() => go(1)}
+            disabled={pos >= total - 1}
+          />
         </div>
 
         {/* 9:16 player */}
@@ -296,7 +310,14 @@ export function ShortsPlayer({ titles }: { titles: ShortTitle[] }) {
           />
           <div className="mt-2 flex flex-col gap-2 md:hidden">
             <IconButton label="Previous short" icon={<ChevronUp />} variant="secondary" round onClick={() => go(-1)} disabled={pos === 0} />
-            <IconButton label="Next short" icon={<ChevronDown />} variant="secondary" round onClick={() => go(1)} disabled={pos >= total - 1} />
+            <IconButton
+              label="Next short"
+              icon={<ChevronDown />}
+              variant="secondary"
+              round
+              onClick={() => go(1)}
+              disabled={pos >= total - 1}
+            />
           </div>
         </div>
       </div>

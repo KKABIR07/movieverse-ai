@@ -22,7 +22,13 @@ const today = '2026-06-01';
 describe('buildFeed', () => {
   it('splits upcoming (soonest first) from recent (newest first) and drops old / undated titles', () => {
     const feed = buildFeed(
-      [{ id: 1, name: 'A', credits: [c(1, '2026-09-01'), c(2, '2026-07-01'), c(3, '2026-05-01'), c(4, '2025-12-01'), c(5, '2010-01-01'), c(6, '')] }],
+      [
+        {
+          id: 1,
+          name: 'A',
+          credits: [c(1, '2026-09-01'), c(2, '2026-07-01'), c(3, '2026-05-01'), c(4, '2025-12-01'), c(5, '2010-01-01'), c(6, '')],
+        },
+      ],
       { today },
     );
     expect(feed.upcoming.map((e) => e.credit.id)).toEqual([2, 1]);
@@ -32,7 +38,11 @@ describe('buildFeed', () => {
   it('merges a title shared by two followed people and attributes both', () => {
     const feed = buildFeed(
       [
-        { id: 1, name: 'A', credits: [c(9, '2026-05-01', { posterPath: null })] },
+        {
+          id: 1,
+          name: 'A',
+          credits: [c(9, '2026-05-01', { posterPath: null })],
+        },
         { id: 2, name: 'B', credits: [c(9, '2026-05-01')] },
       ],
       { today },
@@ -43,7 +53,13 @@ describe('buildFeed', () => {
   });
 
   it('keeps a movie and a show with the same id apart, and filters by type and query', () => {
-    const people = [{ id: 1, name: 'A', credits: [c(9, '2026-05-01', { title: 'Dune' }), c(9, '2026-05-02', { mediaType: 'tv', title: 'Show' })] }];
+    const people = [
+      {
+        id: 1,
+        name: 'A',
+        credits: [c(9, '2026-05-01', { title: 'Dune' }), c(9, '2026-05-02', { mediaType: 'tv', title: 'Show' })],
+      },
+    ];
     expect(buildFeed(people, { today }).recent).toHaveLength(2);
     expect(buildFeed(people, { today, mediaType: 'tv' }).recent.map((e) => e.credit.title)).toEqual(['Show']);
     expect(buildFeed(people, { today, query: 'du' }).recent.map((e) => e.credit.title)).toEqual(['Dune']);

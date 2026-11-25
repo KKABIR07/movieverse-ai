@@ -148,7 +148,10 @@ export function groupCrewByDepartment(crew: readonly PersonCredit[]): { departme
     else groups.set(d, [c]);
   }
   return [...groups.entries()]
-    .map(([department, list]) => ({ department, credits: sortCreditsByDate(list) }))
+    .map(([department, list]) => ({
+      department,
+      credits: sortCreditsByDate(list),
+    }))
     .sort((a, b) => b.credits.length - a.credits.length || a.department.localeCompare(b.department));
 }
 

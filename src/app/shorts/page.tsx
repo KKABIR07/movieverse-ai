@@ -13,7 +13,20 @@ export const metadata: Metadata = pageMeta({
 
 const PER_KIND = 5;
 
-function pick(items: { id: number; title?: string; name?: string; poster_path: string | null; vote_average: number; release_date?: string; first_air_date?: string }[] | undefined, mediaType: 'movie' | 'tv'): ShortTitle[] {
+function pick(
+  items:
+    | {
+        id: number;
+        title?: string;
+        name?: string;
+        poster_path: string | null;
+        vote_average: number;
+        release_date?: string;
+        first_air_date?: string;
+      }[]
+    | undefined,
+  mediaType: 'movie' | 'tv',
+): ShortTitle[] {
   return (items ?? [])
     .filter((m) => typeof m.id === 'number' && (m.title ?? m.name))
     .slice(0, PER_KIND)

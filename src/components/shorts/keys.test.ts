@@ -27,8 +27,20 @@ describe('shortsKeyAction', () => {
   });
 
   it('ignores keys inside dialogs and text-like roles', () => {
-    expect(shortsKeyAction({ key: 'ArrowDown', target: el('BUTTON', { closest: () => ({}) }) })).toBeNull();
-    expect(shortsKeyAction({ key: 'ArrowDown', target: el('DIV', { getAttribute: (n: string) => (n === 'role' ? 'combobox' : null) }) })).toBeNull();
+    expect(
+      shortsKeyAction({
+        key: 'ArrowDown',
+        target: el('BUTTON', { closest: () => ({}) }),
+      }),
+    ).toBeNull();
+    expect(
+      shortsKeyAction({
+        key: 'ArrowDown',
+        target: el('DIV', {
+          getAttribute: (n: string) => (n === 'role' ? 'combobox' : null),
+        }),
+      }),
+    ).toBeNull();
   });
 
   it('ignores modified, composing, already-handled and repeated mute presses', () => {
@@ -68,7 +80,11 @@ describe('shortsEmbedUrl', () => {
 
 describe('playerCommand / clampIndex', () => {
   it('builds IFrame API commands', () => {
-    expect(JSON.parse(playerCommand('unMute'))).toEqual({ event: 'command', func: 'unMute', args: [] });
+    expect(JSON.parse(playerCommand('unMute'))).toEqual({
+      event: 'command',
+      func: 'unMute',
+      args: [],
+    });
   });
   it('clamps indexes', () => {
     expect(clampIndex(-1, 5)).toBe(0);

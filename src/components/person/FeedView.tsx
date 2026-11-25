@@ -48,7 +48,13 @@ function FeedGrid({ entries, label }: { entries: FeedEntry[]; label: string }) {
             item={m}
             meta={
               <>
-                <time dateTime={m.date ?? undefined}>{formatDate(m.date, { year: 'numeric', month: 'short', day: 'numeric' })}</time>
+                <time dateTime={m.date ?? undefined}>
+                  {formatDate(m.date, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                  })}
+                </time>
                 {e && <span className="block truncate text-fg-secondary">{formatPeople(e.people)}</span>}
               </>
             }
@@ -70,12 +76,16 @@ function FeedBody() {
   const failed = people.filter((p) => p.isError).length;
   const sources = people
     .filter((p) => p.film)
-    .map((p) => ({ id: p.person.id, name: p.person.name, credits: [...p.film!.cast, ...p.film!.crew] }));
+    .map((p) => ({
+      id: p.person.id,
+      name: p.person.name,
+      credits: [...p.film!.cast, ...p.film!.crew],
+    }));
   const feed = buildFeed(sources, { mediaType: type, query });
 
   if (hydrated && following.length === 0) {
     return (
-      <div className="px-gutter py-12">
+      <div className="py-12">
         <EmptyState
           icon={<UserPlus />}
           title="Your feed is empty"
@@ -87,7 +97,7 @@ function FeedBody() {
   }
 
   return (
-    <div className="space-y-12 px-gutter pb-16">
+    <div className="space-y-12">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <ToggleGroup
           label="Show"
@@ -134,9 +144,7 @@ function FeedBody() {
         </>
       )}
       {following.length > MAX_FEED_PEOPLE && (
-        <p className="text-caption text-fg-muted tabular">
-          Showing releases for the {MAX_FEED_PEOPLE} people you followed most recently.
-        </p>
+        <p className="text-caption text-fg-muted tabular">Showing releases for the {MAX_FEED_PEOPLE} people you followed most recently.</p>
       )}
     </div>
   );
@@ -162,9 +170,15 @@ export function FeedView() {
           </Button>
         }
       />
-      <AuthGate icon={<Rss />} title="Sign in to see your feed" description="Follow actors and directors, then see their new and upcoming releases in one place.">
-        <FeedBody />
-      </AuthGate>
+      <div className="px-gutter pb-16">
+        <AuthGate
+          icon={<Rss />}
+          title="Sign in to see your feed"
+          description="Follow actors and directors, then see their new and upcoming releases in one place."
+        >
+          <FeedBody />
+        </AuthGate>
+      </div>
     </>
   );
 }

@@ -29,13 +29,13 @@ export function AuthGate({ icon, title, description, loading, children }: AuthGa
         <span className="sr-only" role="status">
           Checking your session…
         </span>
-        {loading ?? <div className="skeleton mx-gutter h-64 rounded-panel" />}
+        {loading ?? <div className="skeleton h-64 rounded-panel" />}
       </div>
     );
   }
   if (status !== 'authenticated') {
     return (
-      <div className="px-gutter py-16">
+      <div className="py-12">
         <EmptyState
           icon={icon}
           title={title}
