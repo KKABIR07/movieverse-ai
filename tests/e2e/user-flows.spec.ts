@@ -254,7 +254,10 @@ test.describe('watchlist @full', () => {
 
     // One watchlist per account; the list name is chosen in the share dialog and lives only in the link.
     await s.page.goto('/movie/550');
+    // wait for the server to confirm the save before the full reload below (a reload can abort the POST)
+    const saved = s.page.waitForResponse((r) => r.url().endsWith('/api/watchlist') && r.request().method() === 'POST');
     await s.page.getByRole('button', { name: /add .*fight club.* to watchlist/i }).first().click();
+    expect((await saved).ok()).toBe(true);
 
     await s.page.goto('/watchlist');
     await s.page.getByRole('button', { name: /^share list$/i }).click();

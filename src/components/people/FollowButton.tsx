@@ -3,7 +3,7 @@
 import { useState, type MouseEvent } from 'react';
 import { UserCheck, UserPlus } from 'lucide-react';
 import { useFollowingStore, useIsFollowing } from '@/store/followingStore';
-import { useAuthStore } from '@/store/authStore';
+import { resolveAuthStatus, useAuthStore } from '@/store/authStore';
 import { useStoresHydrated } from '@/store/hydration';
 import { openAuth } from '@/store';
 import { Button } from '@/components/ui/Button';
@@ -31,7 +31,7 @@ export function FollowButton({ person, size = 'md', className, onAuthRequired }:
   const onClick = async (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (status !== 'authenticated') {
+    if (status !== 'authenticated' && (await resolveAuthStatus()) !== 'authenticated') {
       onAuthRequired?.();
       openAuth('login');
       return;

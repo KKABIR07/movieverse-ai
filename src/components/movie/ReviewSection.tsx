@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { cn } from '@/components/ui/cn';
 import { toast } from '@/store/toastStore';
 import { openAuth } from '@/store';
-import { useAuthStatus } from '@/store/authStore';
+import { resolveAuthStatus, useAuthStatus } from '@/store/authStore';
 import { formatDate, formatRelativeTime } from '@/lib/format';
 import { ApiError, friendlyError } from '@/lib/sync/http';
 import { REVIEW_MAX, reviewsApi, reviewsKey, validateReview, type Review, type ReviewErrors } from '@/lib/sync/reviews';
@@ -83,8 +83,8 @@ export function ReviewSection({ movieId, movieTitle, moviePoster }: ReviewSectio
     onSettled: () => setConfirmDelete(null),
   });
 
-  const onLike = (r: Review) => {
-    if (status !== 'authenticated') return openAuth('login');
+  const onLike = async (r: Review) => {
+    if (status !== 'authenticated' && (await resolveAuthStatus()) !== 'authenticated') return openAuth('login');
     if (r.isMine) return;
     like.mutate({ id: r.id, like: !r.likedByMe });
   };

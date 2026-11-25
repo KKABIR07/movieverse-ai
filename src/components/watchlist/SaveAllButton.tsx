@@ -5,7 +5,7 @@ import { BookmarkPlus, Check } from 'lucide-react';
 import type { WatchlistItem } from '@/types/tmdb';
 import { createWatchlistApi } from '@/lib/sync/watchlistApi';
 import { openAuth, useActiveWatchlistItems, useWatchlistStore } from '@/store';
-import { useAuthStatus } from '@/store/authStore';
+import { resolveAuthStatus, useAuthStatus } from '@/store/authStore';
 import { toast } from '@/store/toastStore';
 import { Button } from '@/components/ui/Button';
 import { describeSaveAll, itemKey, saveAllSequential } from './logic';
@@ -21,7 +21,7 @@ export function SaveAllButton({ items }: { items: Omit<WatchlistItem, 'addedAt'>
   const missing = items.filter((i) => !existing.has(itemKey(i))).length;
 
   const run = async () => {
-    if (status !== 'authenticated') {
+    if (status !== 'authenticated' && (await resolveAuthStatus()) !== 'authenticated') {
       openAuth('login');
       return;
     }

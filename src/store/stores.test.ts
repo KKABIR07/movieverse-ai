@@ -331,3 +331,16 @@ describe('following store hydrate vs in-flight clicks', () => {
     }
   });
 });
+
+describe('resolveAuthStatus (clicks during the sign-in check)', () => {
+  it('waits for /api/auth/me instead of treating "unknown" as signed out', async () => {
+    const Auth = await import('./authStore');
+    Auth.useAuthStore.setState({ status: 'unknown', user: null });
+    const pending = Auth.resolveAuthStatus(1_000);
+    Auth.useAuthStore.setState({ status: 'authenticated' });
+    await expect(pending).resolves.toBe('authenticated');
+    await expect(Auth.resolveAuthStatus()).resolves.toBe('authenticated'); // already known: immediate
+    Auth.useAuthStore.setState({ status: 'unknown', user: null });
+    await expect(Auth.resolveAuthStatus(20)).resolves.toBe('unknown'); // times out
+  });
+});

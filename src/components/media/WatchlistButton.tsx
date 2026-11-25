@@ -2,7 +2,7 @@
 
 import { Bookmark, BookmarkCheck } from 'lucide-react';
 import { useIsInWatchlist, useWatchlistStore, openAuth } from '@/store';
-import { useAuthStore } from '@/store/authStore';
+import { resolveAuthStatus, useAuthStore } from '@/store/authStore';
 import { useStoresHydrated } from '@/store/hydration';
 import { toast } from '@/store/toastStore';
 import { Button, type ButtonSize } from '@/components/ui/Button';
@@ -40,8 +40,9 @@ export function WatchlistButton({
   const saved = hydrated && savedRaw;
   const signedIn = useAuthStore((s) => s.status === 'authenticated');
 
-  const onClick = () => {
-    if (!signedIn) {
+  const onClick = async () => {
+    // right after a page load the sign-in check may still be running: wait for it, don't prompt
+    if (!signedIn && (await resolveAuthStatus()) !== 'authenticated') {
       openAuth('login');
       return;
     }
