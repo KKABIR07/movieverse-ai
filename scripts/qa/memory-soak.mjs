@@ -1,10 +1,18 @@
 #!/usr/bin/env node
 /**
- * Read-only load / soak test. Hits a mixed set of GET routes with N concurrent workers for M seconds
- * and reports throughput, latency percentiles, status codes and error rate per route.
- * Used to verify the 1 GB container under load (watch `docker stats mkmovies-web` alongside).
+ * Read-only load / memory soak test. Hits a mixed set of GET routes with N concurrent workers for M
+ * seconds and reports throughput, latency percentiles, status codes and error rate per route, plus
+ * (optionally) the server's memory over time so a leak shows up as steady growth.
+ * Used to verify the 1 GB container under load.
  *
- *   node scripts/qa/memory-soak.mjs --base-url http://localhost:3000 --concurrency 20 --duration 120
+ *   node scripts/qa/memory-soak.mjs [<url>] [--base-url <url>] --concurrency 20 --duration 120
+ *   npm run qa:soak -- https://www.mkmovies.site --duration 60
+ *     URL default: positional > --base-url > $E2E_BASE_URL > http://localhost:3000
+ *     [--docker <container>]        sample `docker stats` memory of that container (e.g. mkmovies-web)
+ *     [--pid <pid>]                 sample the RSS of a local process (e.g. the `next start` node process)
+ *     [--mem-every 5]               memory sample interval (s)
+ *     [--max-mem-mb 900]            exit 1 if peak memory exceeds this (MB)
+ *     [--max-mem-growth-mb 150]     exit 1 if avg memory of the last third exceeds the first third by this (MB)
  *     [--routes /,/movie/550,...]   override the route mix
  *     [--timeout 15000]             per-request timeout (ms)
  *     [--max-error-rate 0.01]       exit 1 if error rate is above this (errors = network, timeout, 5xx)
@@ -17,7 +25,8 @@
  *
  * GET only — it never writes. Node ≥ 20 (global fetch), no dependencies, Windows + Linux.
  */
-import { writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
 import process from 'node:process';
 
 function arg(name, def) {
@@ -31,11 +40,12 @@ if (flag('help') || flag('h')) {
   process.exit(0);
 }
 function readUsage() {
-  return 'usage: node scripts/qa/memory-soak.mjs --base-url <url> [--concurrency 20] [--duration 60] [--routes a,b] [--out file] [--max-error-rate 0.01] [--max-p95 3000] [--ip-spread]';
+  return 'usage: node scripts/qa/memory-soak.mjs [<url>] [--base-url <url>] [--concurrency 20] [--duration 60] [--routes a,b] [--out file] [--max-error-rate 0.01] [--max-p95 3000] [--docker <name> | --pid <pid>] [--max-mem-mb 900] [--max-mem-growth-mb 150] [--ip-spread]';
 }
 
-const baseUrl = String(arg('base-url', process.env.E2E_BASE_URL ?? '')).replace(/\/+$/, '');
-if (!/^https?:\/\//.test(baseUrl)) {
+const positionalUrl = process.argv.slice(2).find((a) => /^https?:\/\//i.test(a));
+const baseUrl = String(arg('base-url', positionalUrl ?? process.env.E2E_BASE_URL ?? 'http://localhost:3000')).replace(/\/+$/, '');
+if (!/^https?:\/\/[^/]+$/i.test(baseUrl)) {
   console.error(`memory-soak: --base-url is required (got "${baseUrl}")\n${readUsage()}`);
   process.exit(2);
 }
@@ -47,6 +57,51 @@ const maxP95 = arg('max-p95') !== undefined ? Number(arg('max-p95')) : null;
 const healthEvery = Number(arg('health-every', 10));
 const outFile = arg('out');
 const ipSpread = flag('ip-spread');
+const dockerName = arg('docker');
+const pid = arg('pid') ? Number(arg('pid')) : null;
+const memEvery = Math.max(1, Number(arg('mem-every', 5)));
+const maxMemMb = arg('max-mem-mb') !== undefined ? Number(arg('max-mem-mb')) : null;
+const maxGrowthMb = arg('max-mem-growth-mb') !== undefined ? Number(arg('max-mem-growth-mb')) : null;
+
+// ─── memory sampling (optional) ────────────────────────────────────────────────
+const UNITS = { b: 1 / 1024 / 1024, kb: 1 / 1024, kib: 1 / 1024, mb: 1, mib: 1, gb: 1024, gib: 1024 };
+/** "512.3MiB / 1GiB" → 512.3 */
+function parseDockerMem(s) {
+  const m = /([\d.]+)\s*([kmg]i?b|b)/i.exec(s.split('/')[0] ?? '');
+  return m ? +(Number(m[1]) * UNITS[m[2].toLowerCase()]).toFixed(1) : null;
+}
+/** Current memory (MB) of the --docker container or --pid process; null when unavailable. Cross-platform. */
+function sampleMemMb() {
+  try {
+    if (dockerName) {
+      const out = execFileSync('docker', ['stats', '--no-stream', '--format', '{{.MemUsage}}', dockerName], {
+        encoding: 'utf8',
+        timeout: 15_000,
+      });
+      return parseDockerMem(out.trim());
+    }
+    if (pid) {
+      if (process.platform === 'linux') {
+        const m = /VmRSS:\s+(\d+)\s+kB/.exec(readFileSync(`/proc/${pid}/status`, 'utf8'));
+        return m ? +(Number(m[1]) / 1024).toFixed(1) : null;
+      }
+      if (process.platform === 'win32') {
+        // "node.exe","1234","Console","1","123,456 K"  (separator depends on locale)
+        const out = execFileSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', timeout: 15_000 });
+        const cols = out.trim().split('","');
+        const kb = Number((cols[cols.length - 1] ?? '').replace(/[^\d]/g, ''));
+        return kb ? +(kb / 1024).toFixed(1) : null;
+      }
+      const out = execFileSync('ps', ['-o', 'rss=', '-p', String(pid)], { encoding: 'utf8', timeout: 15_000 });
+      const kb = Number(out.trim());
+      return kb ? +(kb / 1024).toFixed(1) : null;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+const memory = [];
 
 const DEFAULT_ROUTES = [
   // pages (SSR + TMDB fetches)
@@ -150,6 +205,11 @@ console.log(
   `memory-soak: ${baseUrl} · ${routes.length} routes · concurrency ${concurrency} · ${durationSec}s${ipSpread ? ' · ip-spread' : ''} (GET only)`,
 );
 const started = Date.now();
+const memSource = dockerName ? `docker:${dockerName}` : pid ? `pid:${pid}` : null;
+if (memSource) memory.push({ t: 0, mb: sampleMemMb() });
+const memTimer = memSource
+  ? setInterval(() => memory.push({ t: Math.round((Date.now() - started) / 1000), mb: sampleMemMb() }), memEvery * 1000)
+  : null;
 const healthTimer = healthEvery > 0 ? setInterval(sampleHealth, healthEvery * 1000) : null;
 const progress = setInterval(() => {
   const done = [...stats.values()].reduce((a, s) => a + s.lat.length, 0);
@@ -168,6 +228,22 @@ await Promise.all(Array.from({ length: concurrency }, (_, i) => worker(i)));
 clearTimeout(timer);
 clearInterval(progress);
 if (healthTimer) clearInterval(healthTimer);
+if (memTimer) clearInterval(memTimer);
+if (memSource) memory.push({ t: Math.round((Date.now() - started) / 1000), mb: sampleMemMb() });
+const memVals = memory.map((m) => m.mb).filter((v) => typeof v === 'number');
+const third = Math.max(1, Math.floor(memVals.length / 3));
+const avg = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+const memSummary = memSource
+  ? {
+      source: memSource,
+      samples: memVals.length,
+      startMb: memVals[0] ?? null,
+      peakMb: memVals.length ? Math.max(...memVals) : null,
+      endMb: memVals[memVals.length - 1] ?? null,
+      // first-third vs last-third average: robust to the GC sawtooth
+      growthMb: memVals.length >= 3 ? +(avg(memVals.slice(-third)) - avg(memVals.slice(0, third))).toFixed(1) : null,
+    }
+  : null;
 
 const elapsed = (Date.now() - started) / 1000;
 const all = [];
@@ -205,6 +281,7 @@ const report = {
   megabytes: +(totalBytes / 1024 / 1024).toFixed(1),
   latencyMs: { p50: pct(all, 50), p95: pct(all, 95), p99: pct(all, 99), max: Math.round(all[all.length - 1] ?? 0) },
   health,
+  memory: memSummary ? { ...memSummary, series: memory } : null,
   perRoute,
 };
 
@@ -227,6 +304,14 @@ if (health.length) {
   const ok = health.filter((h) => typeof h.ms === 'number').map((h) => h.ms);
   console.log(`/api/health under load: ${health.length} samples, max ${ok.length ? Math.max(...ok) : 'n/a'}ms, failures ${health.length - ok.length}`);
 }
+if (memSummary) {
+  console.log(
+    `memory (${memSummary.source}): start ${memSummary.startMb} MB · peak ${memSummary.peakMb} MB · end ${memSummary.endMb} MB · growth ${memSummary.growthMb ?? 'n/a'} MB (${memSummary.samples} samples)`,
+  );
+  if (!memSummary.samples) console.warn('memory: no samples could be read (wrong --pid / --docker name, or no docker CLI?)');
+} else {
+  console.log('memory: not sampled (pass --pid <pid> for a local server or --docker <container> on the box)');
+}
 if (outFile) {
   writeFileSync(outFile, JSON.stringify(report, null, 2));
   console.log(`report written to ${outFile}`);
@@ -239,6 +324,14 @@ if (maxErrorRate !== null && report.errorRate > maxErrorRate) {
 }
 if (maxP95 !== null && report.latencyMs.p95 > maxP95) {
   console.error(`FAIL: p95 ${report.latencyMs.p95}ms > ${maxP95}ms`);
+  failed = true;
+}
+if (memSummary && maxMemMb !== null && memSummary.peakMb !== null && memSummary.peakMb > maxMemMb) {
+  console.error(`FAIL: peak memory ${memSummary.peakMb} MB > ${maxMemMb} MB`);
+  failed = true;
+}
+if (memSummary && maxGrowthMb !== null && memSummary.growthMb !== null && memSummary.growthMb > maxGrowthMb) {
+  console.error(`FAIL: memory grew ${memSummary.growthMb} MB (> ${maxGrowthMb} MB) — possible leak`);
   failed = true;
 }
 if (health.some((h) => h.status !== 200)) {

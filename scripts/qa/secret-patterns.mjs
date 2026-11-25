@@ -11,7 +11,11 @@ export const SECRET_PATTERNS = [
   { id: 'google', re: /AIza[0-9A-Za-z_-]{35}/g, why: 'Google / YouTube API key' },
   { id: 'postgres-url', re: /postgres(?:ql)?:\/\/[^\s"'`]+/gi, why: 'Postgres connection string' },
   { id: 'mongo-url', re: /mongodb(?:\+srv)?:\/\/[^\s"'`]+/gi, why: 'MongoDB connection string' },
-  { id: 'jwt-secret-name', re: /JWT_SECRET/g, why: 'server secret name referenced in client code' },
+  {
+    id: 'server-secret-name',
+    re: /\b(?:JWT_SECRET|TMDB_BEARER|GROQ_API_KEY|YOUTUBE_API_KEY|DATABASE_URL|POSTGRES_PASSWORD)\b/g,
+    why: 'server-only env var name referenced in client code (server module bundled for the browser?)',
+  },
   { id: 'private-key', re: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g, why: 'PEM private key' },
 ];
 
@@ -26,6 +30,7 @@ export const SECRET_ENV_KEYS = [
   'YOUTUBE_API_KEY',
   'MONGODB_URI',
   'DATABASE_URL',
+  'POSTGRES_PASSWORD',
 ];
 
 export function redact(s) {

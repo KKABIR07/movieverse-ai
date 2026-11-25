@@ -2,7 +2,8 @@
 /**
  * Lighthouse gate for mkmovies (desktop + mobile).
  *
- *   node scripts/qa/lighthouse.mjs [--base-url http://localhost:3000] [--paths /,/movie/550]
+ *   node scripts/qa/lighthouse.mjs [<url>] [--base-url http://localhost:3000] [--paths /,/movie/550]
+ *   npm run qa:lighthouse -- https://www.mkmovies.site
  *                                  [--forms desktop,mobile] [--out-dir test-results/lighthouse] [--no-fallback]
  *
  * Thresholds (0–100, override with env):
@@ -29,7 +30,13 @@ function arg(name, def) {
 }
 const flag = (name) => process.argv.includes(`--${name}`);
 
-const baseUrl = String(arg('base-url', process.env.E2E_BASE_URL ?? 'http://localhost:3000')).replace(/\/+$/, '');
+// URL: positional (`lighthouse.mjs https://…`) > --base-url > $E2E_BASE_URL > http://localhost:3000
+const positionalUrl = process.argv.slice(2).find((a) => /^https?:\/\//i.test(a));
+const baseUrl = String(arg('base-url', positionalUrl ?? process.env.E2E_BASE_URL ?? 'http://localhost:3000')).replace(/\/+$/, '');
+if (!/^https?:\/\/[^/]+$/i.test(baseUrl)) {
+  console.error(`lighthouse: invalid base URL "${baseUrl}" (expected e.g. http://localhost:3000)`);
+  process.exit(2);
+}
 const paths = String(arg('paths', '/,/movie/550')).split(',').filter(Boolean);
 const forms = String(arg('forms', 'desktop,mobile')).split(',').filter(Boolean);
 const outDir = path.resolve(arg('out-dir', path.join('test-results', 'lighthouse')));
@@ -82,6 +89,15 @@ if (!chrome) fallback('no Chrome/Chromium found — set CHROME_PATH or run `npx 
 
 const probe = run(isWin ? 'npx.cmd' : 'npx', ['--yes', 'lighthouse@12', '--version']);
 if (probe.status !== 0) fallback(`lighthouse CLI unavailable: ${(probe.stderr || probe.error?.message || '').trim().slice(0, 200)}`);
+
+// Fail fast (exit 2) when nothing is listening, instead of N Lighthouse runtime errors.
+try {
+  const r = await fetch(`${baseUrl}/api/health`, { signal: AbortSignal.timeout(20_000) });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+} catch (err) {
+  console.error(`lighthouse: ${baseUrl} is not reachable (/api/health: ${err?.message ?? err}). Start the app or pass the right URL.`);
+  process.exit(2);
+}
 
 mkdirSync(outDir, { recursive: true });
 const results = [];
