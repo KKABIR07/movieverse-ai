@@ -12,7 +12,7 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}', 'tests/{unit,integration}/**/*.test.{ts,tsx}'],
     exclude: ['node_modules', '.next', 'tests/e2e/**'],
     testTimeout: 30_000,
-    hookTimeout: 120_000, // mongodb-memory-server downloads/starts mongod on first run
+    hookTimeout: 120_000, // PGlite boot + migrations in integration suites
     coverage: { provider: 'v8', include: ['src/lib/**', 'src/app/api/**', 'src/store/**'] },
   },
 });
