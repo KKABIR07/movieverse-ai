@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test, expect, settle, isMobileProject } from './support/fixtures';
+import { requireTmdb } from './support/env';
 
 const PRIMARY = [
   { name: 'Home', href: '/' },
@@ -49,6 +50,7 @@ test.describe('navigation @smoke', () => {
 
   test('Ctrl+K palette: search "inception", Enter opens a detail page @smoke', async ({ page }, info) => {
     test.skip(isMobileProject(info.project.name), 'keyboard shortcut is a desktop affordance');
+    requireTmdb(); // live suggestions come from /api/tmdb/search/multi
     await page.goto('/');
     await settle(page, 5_000);
     await page.keyboard.press('Control+k');
@@ -126,7 +128,8 @@ function loadAxeSource(): string | null {
 }
 
 const AXE = loadAxeSource();
-const AXE_PAGES = ['/', '/movie/550', '/discover', '/search?q=batman'];
+// Pages A (merged) + one Pages B detail page (tagged so the report shows which branch owns it).
+const AXE_PAGES = ['/', '/discover', '/search?q=batman', '/stars', '/movie/550'];
 
 interface AxeViolation {
   id: string;
@@ -140,7 +143,8 @@ test.describe('axe accessibility @smoke', () => {
   test.skip(!AXE, 'axe-core not installed — add "@axe-core/playwright" (or "axe-core") as a devDependency');
 
   for (const path of AXE_PAGES) {
-    test(`axe: no serious/critical WCAG A/AA violations on ${path} @smoke`, async ({ page }) => {
+    test(`axe: no serious/critical WCAG A/AA violations on ${path} @smoke${path.startsWith('/movie/') ? ' @pagesB' : ''}`, async ({ page }) => {
+      requireTmdb();
       await page.goto(path);
       await settle(page);
       await page.addScriptTag({ content: AXE! });

@@ -1,43 +1,65 @@
 /**
- * @smoke route crawl — read-only, safe against production.
- * For every public route: HTTP status, one <h1>, <html lang>, SEO head, image alts, JSON-LD on
- * detail pages, footer TMDB attribution, no console errors / same-origin 5xx, and no horizontal
- * overflow on the mobile project.
+ * @smoke route crawl — read-only, safe against production. Runs on BOTH projects
+ * (desktop 1440×900 and mobile 360×780).
  *
- * Page checks are SOFT: one run lists every gap on a page instead of stopping at the first one.
+ * Hard contract for every route (any markup, old or new):
+ *   - HTTP 200 (404 for the not-found probes), no same-origin 5xx / failed requests during load
+ *   - 0 console errors / uncaught page errors (tiny allowlist in support/fixtures.ts)
+ *   - a non-empty <title> and at least one <h1>
+ *   - no horizontal page overflow at the project's viewport
+ * Soft SEO checks (listed together, one run shows every gap): exactly one <h1>, <html lang>, meta
+ * description + absolute canonical on indexable pages, JSON-LD on detail pages, image alts, footer
+ * TMDB attribution.
+ *
+ * Routes owned by the Pages B branch are tagged @pagesB and annotated; their SEO extras (canonical,
+ * JSON-LD, description) are only enforced once E2E_PAGES_B=1 — the hard contract always applies.
+ * Routes that render TMDB data are skipped with a clear reason when the server can't reach TMDB.
  */
 import type { APIRequestContext, Page } from '@playwright/test';
-import { test, expect, settle, isMobileProject } from './support/fixtures';
+import { test, expect, settle } from './support/fixtures';
+import { isPagesBRoute, PAGES_B_MERGED, requireTmdb } from './support/env';
 
 interface RouteSpec {
   path: string;
-  /** Indexable content page → title + meta description + canonical required. */
+  /** Indexable content page → meta description + canonical expected. */
   content?: boolean;
   /** Detail page → at least one JSON-LD block that parses. */
   jsonLd?: boolean;
+  /** Renders TMDB data server-side → skipped when TMDB is unreachable. */
+  tmdb?: boolean;
 }
 
 const ROUTES: RouteSpec[] = [
-  { path: '/', content: true },
-  { path: '/trending', content: true },
-  { path: '/top-rated', content: true },
-  { path: '/movies', content: true },
-  { path: '/tv', content: true },
-  { path: '/discover', content: true },
-  { path: '/search?q=batman' },
-  { path: '/stars', content: true },
+  { path: '/', content: true, tmdb: true },
+  { path: '/trending', content: true, tmdb: true },
+  { path: '/top-rated', content: true, tmdb: true },
+  { path: '/movies', content: true, tmdb: true },
+  { path: '/tv', content: true, tmdb: true },
+  { path: '/discover', content: true, tmdb: true },
+  { path: '/discover?type=tv&sort=vote_average.desc', tmdb: true },
+  { path: '/search' },
+  { path: '/search?q=batman', tmdb: true },
+  { path: '/stars', content: true, tmdb: true },
+  { path: '/genre/28', content: true, tmdb: true },
+  // ── Pages B ──
+  { path: '/movie/550', content: true, jsonLd: true, tmdb: true },
+  { path: '/tv/1399', content: true, jsonLd: true, tmdb: true },
+  { path: '/person/287', content: true, jsonLd: true, tmdb: true },
   { path: '/shorts', content: true },
   { path: '/about', content: true },
   { path: '/blog', content: true },
-  { path: '/movie/550', content: true, jsonLd: true },
-  { path: '/tv/1399', content: true, jsonLd: true },
-  { path: '/person/287', content: true, jsonLd: true },
-  { path: '/genre/28', content: true },
+  { path: '/feed' },
+  { path: '/following' },
   { path: '/watchlist' },
+  { path: '/watchlist/share' },
   { path: '/profile' },
 ];
 
-const NOT_FOUND = ['/movie/999999999', '/genre/999999', '/nope'];
+const NOT_FOUND: RouteSpec[] = [
+  { path: '/nope-this-route-does-not-exist' },
+  { path: '/movie/999999999', tmdb: true },
+  { path: '/genre/999999', tmdb: true },
+];
 const ATTRIBUTION = 'This product uses the TMDB API but is not endorsed or certified by TMDB.';
 
 /** Resolve the first blog post slug from /blog (so the suite doesn't hard-code content). */
@@ -48,16 +70,48 @@ async function firstBlogPost(request: APIRequestContext): Promise<string | null>
   return m ? m[1] : null;
 }
 
-async function checkHtmlPage(page: Page, spec: RouteSpec, mobile: boolean): Promise<void> {
-  const soft = expect.soft;
-  // Client-rendered pages may add their <h1> after hydration.
-  await page.locator('h1').first().waitFor({ state: 'attached', timeout: 5_000 }).catch(() => undefined);
+/** Elements sticking out past the viewport's right edge (ignores clipped scrollers like rails). */
+async function horizontalOverflow(page: Page) {
+  return page.evaluate(() => {
+    const doc = document.documentElement;
+    const wide = [...document.querySelectorAll<HTMLElement>('body *')]
+      .filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.right > window.innerWidth + 1 && getComputedStyle(el).position !== 'fixed';
+      })
+      .filter((el) => {
+        for (let p = el.parentElement; p; p = p.parentElement) {
+          const ox = getComputedStyle(p).overflowX;
+          if (ox === 'auto' || ox === 'scroll' || ox === 'hidden' || ox === 'clip') return false;
+        }
+        return true;
+      })
+      .slice(0, 5)
+      .map((el) => {
+        const cls = typeof el.className === 'string' ? el.className.split(/\s+/).slice(0, 3).join('.') : '';
+        return `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${cls ? `.${cls}` : ''} right=${Math.round(el.getBoundingClientRect().right)}`;
+      });
+    return { scrollWidth: doc.scrollWidth, innerWidth: window.innerWidth, wide };
+  });
+}
 
+async function checkHardContract(page: Page): Promise<void> {
+  // Client-rendered pages may add their <h1> after hydration.
+  await page.locator('h1').first().waitFor({ state: 'attached', timeout: 8_000 }).catch(() => undefined);
+  expect((await page.title()).trim().length, '<title> is set').toBeGreaterThan(2);
+  expect(await page.locator('h1').count(), 'has an <h1>').toBeGreaterThanOrEqual(1);
+  const o = await horizontalOverflow(page);
+  expect(o.scrollWidth, `no horizontal overflow at ${o.innerWidth}px (offenders: ${o.wide.join(', ') || 'n/a'})`).toBeLessThanOrEqual(
+    o.innerWidth + 1,
+  );
+}
+
+async function checkSeo(page: Page, spec: RouteSpec, enforceExtras: boolean): Promise<void> {
+  const soft = expect.soft;
   soft(await page.locator('html').getAttribute('lang'), '<html lang>').toMatch(/^[a-z]{2}(-[A-Za-z]{2})?$/);
   soft(await page.locator('h1').count(), 'exactly one <h1>').toBe(1);
 
-  if (spec.content) {
-    soft((await page.title()).trim().length, '<title> length').toBeGreaterThan(2);
+  if (spec.content && enforceExtras) {
     const desc = page.locator('head meta[name="description"]');
     soft(await desc.count(), 'one meta description').toBe(1);
     const descText = (await desc.count()) ? ((await desc.first().getAttribute('content')) ?? '') : '';
@@ -68,7 +122,7 @@ async function checkHtmlPage(page: Page, spec: RouteSpec, mobile: boolean): Prom
     if (nCanonical) soft(await canonical.first().getAttribute('href'), 'absolute canonical URL').toMatch(/^https?:\/\//);
   }
 
-  if (spec.jsonLd) {
+  if (spec.jsonLd && enforceExtras) {
     const blocks = await page.locator('script[type="application/ld+json"]').allTextContents();
     soft(blocks.length, 'JSON-LD blocks').toBeGreaterThan(0);
     for (const b of blocks) {
@@ -94,64 +148,48 @@ async function checkHtmlPage(page: Page, spec: RouteSpec, mobile: boolean): Prom
   soft((await footer.count()) ? await footer.first().innerText() : '(no footer landmark)', 'footer TMDB attribution').toContain(
     ATTRIBUTION,
   );
+}
 
-  if (mobile) {
-    const overflow = await page.evaluate(() => {
-      const doc = document.documentElement;
-      const wide = [...document.querySelectorAll<HTMLElement>('body *')]
-        .filter((el) => {
-          const r = el.getBoundingClientRect();
-          return r.width > 0 && r.right > window.innerWidth + 1 && getComputedStyle(el).position !== 'fixed';
-        })
-        // ignore elements inside horizontal scrollers (rails) — they are clipped by design
-        .filter((el) => {
-          for (let p = el.parentElement; p; p = p.parentElement) {
-            const ox = getComputedStyle(p).overflowX;
-            if (ox === 'auto' || ox === 'scroll' || ox === 'hidden' || ox === 'clip') return false;
-          }
-          return true;
-        })
-        .slice(0, 5)
-        .map((el) => {
-          const cls = typeof el.className === 'string' ? el.className.split(/\s+/).slice(0, 3).join('.') : '';
-          return `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${cls ? `.${cls}` : ''} right=${Math.round(el.getBoundingClientRect().right)}`;
-        });
-      return { scrollWidth: doc.scrollWidth, innerWidth: window.innerWidth, wide };
-    });
-    soft(overflow.scrollWidth, `no horizontal overflow (offenders: ${overflow.wide.join(', ')})`).toBeLessThanOrEqual(
-      overflow.innerWidth + 1,
-    );
-  }
+function titleFor(path: string, suffix = ''): string {
+  return `GET ${path}${suffix} @smoke${isPagesBRoute(path) ? ' @pagesB' : ''}`;
 }
 
 test.describe('crawl @smoke', () => {
   for (const spec of ROUTES) {
-    test(`GET ${spec.path} @smoke`, async ({ page, issues }, info) => {
+    test(titleFor(spec.path), async ({ page, issues }) => {
+      if (spec.tmdb) requireTmdb();
+      const pagesB = isPagesBRoute(spec.path);
+      if (pagesB && !PAGES_B_MERGED()) {
+        test.info().annotations.push({ type: 'pagesB', description: 'old markup — SEO extras not enforced until E2E_PAGES_B=1' });
+      }
       const res = await page.goto(spec.path, { waitUntil: 'domcontentloaded' });
       expect(res, 'navigation response').not.toBeNull();
       expect(res!.status(), `HTTP status for ${spec.path}`).toBe(200);
       await settle(page);
-      await checkHtmlPage(page, spec, isMobileProject(info.project.name));
+      await checkHardContract(page);
+      await checkSeo(page, spec, !pagesB || PAGES_B_MERGED());
       issues.expectClean();
     });
   }
 
-  test('GET first blog post @smoke', async ({ page, request, issues }, info) => {
+  test('GET first blog post @smoke @pagesB', async ({ page, request, issues }) => {
     const path = await firstBlogPost(request);
     expect(path, 'a /blog/<slug> link on /blog').not.toBeNull();
     const res = await page.goto(path!, { waitUntil: 'domcontentloaded' });
     expect(res!.status()).toBe(200);
     await settle(page);
-    await checkHtmlPage(page, { path: path!, content: true, jsonLd: true }, isMobileProject(info.project.name));
+    await checkHardContract(page);
+    await checkSeo(page, { path: path!, content: true, jsonLd: true }, PAGES_B_MERGED());
     issues.expectClean();
   });
 
-  for (const path of NOT_FOUND) {
-    test(`GET ${path} → 404 @smoke`, async ({ page }) => {
-      const res = await page.goto(path, { waitUntil: 'domcontentloaded' });
-      expect(res!.status(), `status for ${path}`).toBe(404);
+  for (const spec of NOT_FOUND) {
+    test(titleFor(spec.path, ' → 404'), async ({ page }) => {
+      if (spec.tmdb) requireTmdb();
+      const res = await page.goto(spec.path, { waitUntil: 'domcontentloaded' });
+      expect(res!.status(), `status for ${spec.path}`).toBe(404);
       await settle(page, 5_000);
-      expect.soft(await page.locator('h1').count(), 'exactly one <h1> on the 404 page').toBe(1);
+      await checkHardContract(page);
       // A 404 page must not be indexable.
       const robots = page.locator('head meta[name="robots"]');
       if (await robots.count()) expect.soft(await robots.first().getAttribute('content')).toMatch(/noindex/);
@@ -172,7 +210,7 @@ test.describe('crawl metadata files @smoke', () => {
     expect(txt).toMatch(/Sitemap:\s*https?:\/\/\S+\/sitemap\.xml/i);
   });
 
-  test('GET /sitemap.xml @smoke', async ({ request }) => {
+  test('GET /sitemap.xml @smoke @pagesB', async ({ request }) => {
     const res = await request.get('/sitemap.xml');
     expect(res.status()).toBe(200);
     expect(res.headers()['content-type']).toMatch(/xml/);

@@ -19,7 +19,7 @@ test('no secrets in HTML or same-origin JS/CSS served to browsers @smoke', async
     bodies.set(url, res.text().catch(() => ''));
   });
 
-  for (const path of ['/', '/movie/550', '/discover', '/watchlist']) {
+  for (const path of ['/', '/search', '/discover', '/movie/550', '/watchlist']) {
     await page.goto(path, { waitUntil: 'load' });
     await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => undefined);
   }
@@ -27,8 +27,8 @@ test('no secrets in HTML or same-origin JS/CSS served to browsers @smoke', async
   const findings: (Hit & { url: string })[] = [];
   for (const [url, p] of bodies) {
     for (const hit of findSecrets(await p) as Hit[]) {
-      // The literal string "JWT_SECRET" in an HTML/JSON API error is not a leak of the value; only flag it in code.
-      if (hit.id === 'jwt-secret-name' && !/\.(js|mjs)(\?|$)/.test(url)) continue;
+      // An env var NAME in an HTML/JSON body (e.g. a 503 "TMDB_BEARER missing") is not a leak of its value; only flag it in code.
+      if (hit.id === 'server-secret-name' && !/\.(js|mjs)(\?|$)/.test(url)) continue;
       findings.push({ url, ...hit });
     }
   }

@@ -4,11 +4,16 @@
  *   E2E_BASE_URL       target (default http://localhost:3000). Production: https://www.mkmovies.site
  *   E2E_START_SERVER=1 let Playwright run `npm run build && npm run start` itself (local only)
  *   E2E_CHROME_CHANNEL use an installed browser instead of Playwright's Chromium (e.g. "chrome")
+ *   E2E_PAGES_B=1      Pages B redesign merged → run the tests that target its markup (else "fixme")
+ *   E2E_REQUIRE_ALL=1  missing DB / TMDB is a FAILURE instead of a skip (CI, pre-deploy)
+ *   E2E_DB / E2E_TMDB  up|down — override the globalSetup probes (tests/e2e/global-setup.ts)
  *   CI                 retries 1, forbid .only
  *
  * Tags (filter with --grep):
  *   @smoke  read-only, no signups → safe against PRODUCTION
  *   @full   creates users / reviews / chat messages, bursts the rate limiter → local or staging only
+ *   @perf   web-vitals budgets (production builds only)
+ *   @pagesB route/test owned by the Pages B redesign branch (annotated; see tests/e2e/support/env.ts)
  *
  * See CLAUDE_REFERENCE/testing.md for the full runbook.
  */
@@ -29,6 +34,7 @@ const port = (() => {
 export default defineConfig({
   testDir: './tests',
   testMatch: ['e2e/**/*.spec.ts', 'security/**/*.spec.ts', 'perf/**/*.spec.ts'],
+  globalSetup: './tests/e2e/global-setup.ts',
   outputDir: './test-results',
   fullyParallel: true,
   forbidOnly: isCI,
@@ -57,9 +63,9 @@ export default defineConfig({
     {
       name: 'mobile',
       use: {
-        // Pixel-7-like, but on Chromium (devices['Pixel 7'] is Chromium already; pinned explicitly for clarity).
+        // Pixel-7 touch/UA profile (Chromium) at the 360px small-Android width — the narrowest we support.
         ...devices['Pixel 7'],
-        viewport: { width: 390, height: 844 },
+        viewport: { width: 360, height: 780 },
         deviceScaleFactor: 2.625,
         isMobile: true,
         hasTouch: true,

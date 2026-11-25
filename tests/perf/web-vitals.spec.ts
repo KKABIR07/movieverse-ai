@@ -11,6 +11,7 @@
  * The Lighthouse runner (scripts/qa/lighthouse.mjs) uses this spec as its fallback.
  */
 import { test, expect } from '@playwright/test';
+import { requireTmdb, isPagesBRoute, PAGES_B_MERGED } from '../e2e/support/env';
 
 const LCP_MS = Number(process.env.PERF_LCP_MS ?? 2500);
 const CLS_MAX = Number(process.env.PERF_CLS ?? 0.1);
@@ -72,7 +73,13 @@ test.describe('web vitals budgets @perf', () => {
   test.skip(({ isMobile }) => isMobile, 'desktop budgets');
 
   for (const path of ['/', '/movie/550']) {
-    test(`${path}: LCP < ${LCP_MS}ms, CLS < ${CLS_MAX} @perf`, async ({ page }, info) => {
+    test(`${path}: LCP < ${LCP_MS}ms, CLS < ${CLS_MAX} @perf${isPagesBRoute(path) ? ' @pagesB' : ''}`, async ({ page }, info) => {
+      requireTmdb(); // both pages are TMDB-driven; numbers are meaningless on an error page
+      if (isPagesBRoute(path) && !PAGES_B_MERGED()) {
+        info.annotations.push({ type: 'pagesB', description: 'measuring the pre-redesign detail page' });
+      }
+      const res = await page.request.get(path);
+      expect(res.status(), `${path} must render (200) before it can be measured`).toBe(200);
       const v = await measure(page, path);
       await info.attach(`vitals${path.replace(/\W+/g, '-')}.json`, { body: JSON.stringify(v, null, 2), contentType: 'application/json' });
       console.log(`[perf] ${path}`, JSON.stringify(v));
