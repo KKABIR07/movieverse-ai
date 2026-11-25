@@ -1,7 +1,8 @@
 import Groq from 'groq-sdk';
 import { getGroqApiKey } from './env';
 
-export const GROQ_MODEL = 'llama-3.3-70b-versatile';
+/** Groq retired llama-3.3-70b-versatile for this key (404 model_not_found). Override with GROQ_MODEL. */
+export const GROQ_MODEL = process.env.GROQ_MODEL?.trim() || 'openai/gpt-oss-120b';
 
 export const AI_SYSTEM_PROMPT = `You are mkmovies AI — a passionate, knowledgeable movie and TV assistant.
 You help users discover films and shows, explain plot points, compare directors, and give tailored recommendations.

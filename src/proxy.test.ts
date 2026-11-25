@@ -88,21 +88,26 @@ describe('proxy', () => {
 
   it('429 + Retry-After after the auth bucket (10/min) is exhausted, per IP', async () => {
     const ip = '203.0.113.50';
-    const hit = () => proxy(req('/api/auth/me', { headers: { 'x-real-ip': ip } }));
+    const hit = () => proxy(req('/api/auth/logout', { method: 'POST', headers: { 'x-real-ip': ip } }));
     for (let i = 0; i < 10; i++) expect(passes(hit())).toBe(true);
     const res = hit();
     expect(res.status).toBe(429);
     expect(Number(res.headers.get('Retry-After'))).toBeGreaterThanOrEqual(1);
     expect((await res.json()).code).toBe('RATE_LIMITED');
     // another IP is unaffected
-    expect(passes(proxy(req('/api/auth/me', { headers: { 'x-real-ip': '203.0.113.51' } })))).toBe(true);
+    expect(passes(proxy(req('/api/auth/logout', { method: 'POST', headers: { 'x-real-ip': '203.0.113.51' } })))).toBe(true);
   });
 
   it('spoofed XFF first hops do not dodge the limiter when x-real-ip is set', () => {
     const ip = '203.0.113.60';
-    const hit = (i: number) => proxy(req('/api/auth/me', { headers: { 'x-real-ip': ip, 'x-forwarded-for': `10.9.9.${i}, ${ip}` } }));
+    const hit = (i: number) => proxy(req('/api/auth/logout', { method: 'POST', headers: { 'x-real-ip': ip, 'x-forwarded-for': `10.9.9.${i}, ${ip}` } }));
     for (let i = 0; i < 10; i++) hit(i);
     expect(hit(99).status).toBe(429);
+  });
+
+  it('GET /api/auth/me is on the default bucket, so normal browsing never signs the user out', () => {
+    const ip = '203.0.113.55';
+    for (let i = 0; i < 30; i++) expect(passes(proxy(req('/api/auth/me', { headers: { 'x-real-ip': ip } })))).toBe(true);
   });
 
   it('chat POST bucket is 10 per 10s', () => {

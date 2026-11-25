@@ -110,7 +110,7 @@ function AuthForm({ defaultTab, onDone }: { defaultTab: Tab; onDone: () => void 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={tab === 'signup' ? 6 : undefined}
+              minLength={tab === 'signup' ? 8 : undefined}
               aria-describedby={tab === 'signup' ? `${ids}-pw-hint` : undefined}
               autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
               className={`${inputClass} pr-12`}
@@ -127,7 +127,7 @@ function AuthForm({ defaultTab, onDone }: { defaultTab: Tab; onDone: () => void 
           </div>
           {tab === 'signup' && (
             <p id={`${ids}-pw-hint`} className="mt-1.5 text-micro text-fg-muted">
-              At least 6 characters.
+              At least 8 characters.
             </p>
           )}
         </div>

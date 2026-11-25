@@ -150,7 +150,7 @@ export function Header() {
               badge={chatOpen ? 0 : unread}
               pressed={chatOpen}
               onClick={toggleChat}
-              aria-controls="chat-panel"
+              aria-controls={chatOpen ? 'chat-panel' : undefined}
             />
 
             {signedIn ? (

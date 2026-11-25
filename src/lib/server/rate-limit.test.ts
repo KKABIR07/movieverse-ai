@@ -67,7 +67,8 @@ describe('TokenBucketLimiter', () => {
 describe('ruleFor', () => {
   it.each([
     ['/api/auth/login', 'POST', RULES.auth],
-    ['/api/auth/me', 'GET', RULES.auth],
+    ['/api/auth/me', 'GET', RULES.default],
+    ['/api/auth/logout-all', 'POST', RULES.auth],
     ['/api/ai/recommend', 'POST', RULES.ai],
     ['/api/chat', 'POST', RULES.chatPost],
     ['/api/chat', 'GET', RULES.default],

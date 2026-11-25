@@ -48,7 +48,7 @@ export function Pagination({
           <span className="sr-only sm:not-sr-only sm:ml-1">Previous</span>
         </Link>
       ) : (
-        <span aria-hidden className={cn(item, 'text-fg-muted/50')}>
+        <span aria-hidden className={cn(item, 'text-fg-muted')}>
           <ChevronLeft className="size-4" />
           <span className="hidden sm:inline sm:ml-1">Previous</span>
         </span>
@@ -84,7 +84,7 @@ export function Pagination({
           <ChevronRight aria-hidden className="size-4" />
         </Link>
       ) : (
-        <span aria-hidden className={cn(item, 'text-fg-muted/50')}>
+        <span aria-hidden className={cn(item, 'text-fg-muted')}>
           <span className="hidden sm:inline sm:mr-1">Next</span>
           <ChevronRight className="size-4" />
         </span>

@@ -132,6 +132,8 @@ export const useAuthStore = create<AuthStore>()((set) => ({
   hydrate: async () => {
     try {
       const res = await fetch('/api/auth/me', { cache: 'no-store' });
+      // 429/5xx says nothing about the session: keep 'unknown' rather than signing the user out
+      if (!res.ok) return;
       const data = await readJson(res);
       if (data.user) set({ user: data.user as User, status: 'authenticated' });
       else set({ user: null, status: 'anonymous' });

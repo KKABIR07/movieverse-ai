@@ -18,6 +18,8 @@ export const POST = withHandler('ai.recommend', async (req) => {
       // Server owns the system prompt; clients can only send user/assistant turns.
       messages: [{ role: 'system', content: AI_SYSTEM_PROMPT }, ...messages],
       max_tokens: 512,
+      // gpt-oss models reason before answering; keep it short so the 512-token budget goes to the reply.
+      ...(GROQ_MODEL.startsWith('openai/gpt-oss') ? { reasoning_effort: 'low' as const } : {}),
       temperature: 0.75,
     });
   } catch (err) {

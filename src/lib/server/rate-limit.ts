@@ -106,7 +106,8 @@ export const RULES = {
 /** Which bucket applies to a request. Returns null for exempt paths (health checks). */
 export function ruleFor(pathname: string, method: string): RateRule | null {
   if (pathname === '/api/health' || pathname === '/api/ready') return null;
-  if (pathname.startsWith('/api/auth/')) return RULES.auth;
+  // Only credential/session-mutating calls share the tight bucket; GET /api/auth/me runs on every page load.
+  if (pathname.startsWith('/api/auth/') && method !== 'GET') return RULES.auth;
   if (pathname.startsWith('/api/ai/')) return RULES.ai;
   if (pathname === '/api/chat' && method === 'POST') return RULES.chatPost;
   if (pathname.startsWith('/api/youtube/')) return RULES.youtube;
