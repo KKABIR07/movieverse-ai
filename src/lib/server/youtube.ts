@@ -1,16 +1,19 @@
 /**
  * YouTube Data API search with a two-level cache:
- *   1. MongoDB `youtubecaches` collection (24h TTL index) — survives restarts, shared across requests
+ *   1. Postgres `youtube_cache` table (24h expires_at; expired rows swept opportunistically + at boot)
+ *      — survives restarts, shared across requests
  *   2. In-memory LRU fallback (used when the DB is unavailable, and as a hot front cache)
  * Each uncached search costs 100 quota units, so caching matters a lot (10k units/day free).
  */
-import { connectDB } from '@/lib/db/mongoose';
-import { YoutubeCache, YOUTUBE_CACHE_TTL_SECONDS, type IYoutubeCacheItem } from '@/lib/db/models';
+import { and, eq, gt, sql } from 'drizzle-orm';
+import { getDb } from '@/lib/db/client';
+import { maybeSweep } from '@/lib/db/maintenance';
+import { youtubeCache, YOUTUBE_CACHE_TTL_SECONDS, type YoutubeCacheItem } from '@/lib/db/schema';
 import { getYoutubeApiKey } from './env';
 import { HttpError } from './errors';
 import { logger } from './logger';
 
-export type YTItem = IYoutubeCacheItem;
+export type YTItem = YoutubeCacheItem;
 export type YTSearchType = 'shorts' | 'videos';
 
 const log = logger.child({ component: 'youtube' });
@@ -48,12 +51,12 @@ export function clearMemoryCache(): void {
 // ─── DB cache (best-effort: any DB failure falls back to memory only) ─────────
 async function dbGet(key: string): Promise<YTItem[] | null> {
   try {
-    await connectDB();
-    const cutoff = new Date(Date.now() - MEM_TTL_MS); // TTL monitor runs ~every 60s; double-check age
-    const doc = await YoutubeCache.findOne({ key, createdAt: { $gt: cutoff } })
-      .select('items')
-      .lean<{ items: YTItem[] }>();
-    return doc ? doc.items : null;
+    const [row] = await getDb()
+      .select({ payload: youtubeCache.payload })
+      .from(youtubeCache)
+      .where(and(eq(youtubeCache.key, key), gt(youtubeCache.expiresAt, sql`now()`)))
+      .limit(1);
+    return row && Array.isArray(row.payload) ? row.payload : null;
   } catch (err) {
     log.warn('db cache read failed; using memory cache', { err });
     return null;
@@ -62,8 +65,13 @@ async function dbGet(key: string): Promise<YTItem[] | null> {
 
 async function dbSet(key: string, items: YTItem[]): Promise<void> {
   try {
-    await connectDB();
-    await YoutubeCache.updateOne({ key }, { $set: { items, createdAt: new Date() } }, { upsert: true });
+    const db = getDb();
+    const expiresAt = new Date(Date.now() + YOUTUBE_CACHE_TTL_SECONDS * 1000);
+    await db
+      .insert(youtubeCache)
+      .values({ key, payload: items, expiresAt })
+      .onConflictDoUpdate({ target: youtubeCache.key, set: { payload: items, expiresAt } });
+    maybeSweep('youtube', db, 0.05);
   } catch (err) {
     log.warn('db cache write failed', { err });
   }

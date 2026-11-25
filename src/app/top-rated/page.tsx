@@ -1,64 +1,56 @@
-'use client';
+import type { Metadata } from 'next';
+import { connection } from 'next/server';
+import { getMovieList, getTvList } from '@/lib/tmdb/server';
+import { BrowseList } from '@/components/browse/BrowseList';
+import { load } from '@/components/browse/BrowseStates';
+import { FilterLinks } from '@/components/browse/FilterLinks';
+import { pageMeta } from '@/components/browse/meta';
+import { buildHref, parsePage, pick, type RawParams } from '@/components/browse/params';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Star } from 'lucide-react';
-import { tmdb } from '@/lib/tmdb';
-import { MovieGrid } from '@/components/movie/MovieGrid';
+const TYPES = ['movie', 'tv'] as const;
+type Props = { searchParams: Promise<RawParams> };
 
-export default function TopRatedPage() {
-  const [mediaType, setMediaType] = useState<'movie' | 'tv'>('movie');
-  const [page, setPage] = useState(1);
-
-  const { data: movieData, isLoading: movieLoading } = useQuery({
-    queryKey: ['top_rated', 'movie', page],
-    queryFn: () => tmdb.movie.topRated(page),
-    enabled: mediaType === 'movie',
+export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
+  const type = pick((await searchParams).type, TYPES, 'movie');
+  return pageMeta({
+    title: type === 'tv' ? 'Top rated TV shows' : 'Top rated movies',
+    description: `The highest-rated ${type === 'tv' ? 'series' : 'films'} of all time, ranked by TMDB members.`,
+    path: buildHref('/top-rated', { type }, { type: 'movie' }),
   });
-  const { data: tvData, isLoading: tvLoading } = useQuery({
-    queryKey: ['top_rated', 'tv', page],
-    queryFn: () => tmdb.tv.topRated(page),
-    enabled: mediaType === 'tv',
-  });
-  const data = mediaType === 'movie' ? movieData : tvData;
-  const isLoading = mediaType === 'movie' ? movieLoading : tvLoading;
+}
+
+export default async function TopRatedPage({ searchParams }: Props) {
+  await connection();
+  const sp = await searchParams;
+  const type = pick(sp.type, TYPES, 'movie');
+  const page = parsePage(sp.page);
+  const href = (p: Partial<{ type: string; page: number }>) =>
+    buildHref('/top-rated', { type, page, ...p }, { type: 'movie' });
+
+  const result =
+    type === 'tv' ? await load('tv/top_rated', getTvList('top_rated', page)) : await load('movie/top_rated', getMovieList('top_rated', page));
 
   return (
-    <div className="container mx-auto px-4 md:px-8 py-24 min-h-screen">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2.5 rounded-xl bg-yellow-500/10 text-yellow-400">
-          <Star size={22} />
-        </div>
-        <h1 className="text-3xl font-black text-[var(--text-primary)]">Top Rated</h1>
-      </div>
-
-      <div className="flex flex-wrap gap-2 mb-8">
-        <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
-          {(['movie', 'tv'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => { setMediaType(t); setPage(1); }}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${mediaType === t ? 'bg-[var(--accent-primary)] text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
-            >
-              {t === 'movie' ? 'Movies' : 'TV Shows'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <MovieGrid items={data?.results ?? []} mediaType={mediaType} loading={isLoading} />
-
-      {data && data.total_pages > 1 && (
-        <div className="flex justify-center gap-3 mt-10">
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-4 py-2 rounded-xl border border-[var(--border)] text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 transition-colors">
-            Previous
-          </button>
-          <span className="px-4 py-2 text-sm text-[var(--text-muted)]">{page} / {Math.min(data.total_pages, 500)}</span>
-          <button onClick={() => setPage((p) => p + 1)} disabled={page >= data.total_pages || page >= 500} className="px-4 py-2 rounded-xl border border-[var(--border)] text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 transition-colors">
-            Next
-          </button>
-        </div>
-      )}
-    </div>
+    <BrowseList
+      eyebrow="All-time best"
+      title={type === 'tv' ? 'Top rated TV shows' : 'Top rated movies'}
+      description="Ranked by TMDB member ratings, with a minimum number of votes."
+      filters={
+        <FilterLinks
+          label="Content type"
+          value={type}
+          options={[
+            { value: 'movie', label: 'Movies', href: href({ type: 'movie', page: 1 }) },
+            { value: 'tv', label: 'TV shows', href: href({ type: 'tv', page: 1 }) },
+          ]}
+        />
+      }
+      result={result}
+      mediaType={type}
+      page={page}
+      hrefForPage={(p) => href({ page: p })}
+      retryHref={href({})}
+      label={type === 'tv' ? 'Top rated TV shows' : 'Top rated movies'}
+    />
   );
 }

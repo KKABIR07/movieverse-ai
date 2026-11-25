@@ -1,6 +1,23 @@
 # Plan WIP
 
 ## SESSION_CONTEXT_RETRIEVAL
+> **PAUSED 2026-11-25 by user ("stop we will pickup tomorrow"). RESUME HERE:**
+> `feature/oci-redesign` @ 689abe0 = MERGED: infra, backend, foundation, Postgres port (Drizzle), infra v2
+> (db + mkmovies.slice + backups + disk guard), cacheMaxMemorySize, proxy bodyless fix. 299 tests pass, tsc clean,
+> `next build` passes with NO secrets.
+> UNMERGED work (stopped mid-way, all committed on their branches in .claude/worktrees/):
+>  - Pages A `worktree-agent-a028d9f17c0028818` (8 commits: home, lists, discover, search, genre, stars, dice) —
+>    was finishing Discover polish/verification. Likely near done → review, verify, merge.
+>  - Pages B `worktree-agent-a0a44707a2d5a3b74` (sync clients + movie/tv detail + wip) — STILL TODO: person,
+>    shorts, feed, following, watchlist(+share), profile, about (remove "MongoDB" from tech list), blog, sitemap.
+>  - QA `worktree-agent-a9c282ba5b75ea492` (1 wip commit: playwright.config, tests/e2e, security, perf, scripts/qa).
+> Tomorrow: 1) resume/finish Pages B + QA (parallel), verify + merge Pages A; 2) integrate: delete legacy components
+> (MovieCard, HorizontalScroll, MovieGrid, HeroBanner, TrendingShowcase, GenreSection, StarRating, 3d/) + remove
+> three/@react-three deps; add QA npm scripts; 3) full test + e2e + screenshots → user approval; 4) deploy
+> (`scripts/deploy.sh` → exit 3 → push TMDB_BEARER from .env.local via push-env.sh (user OK'd in principle; confirm)
+> → deploy again); 5) live smoke via Cloudflare; 6) Vercel removal (confirm); 7) docs + PR.
+> Box facts verified: cgroup driver systemd, cgroup v2 → mkmovies.slice works. Origin cert installed.
+>
 > mkMovies = MovieVerse AI (github.com/KKABIR07/movieverse-ai, Next.js 16 + MongoDB Atlas + TMDB + YouTube + Groq).
 > Cloned here 2026-11-25 (commit bc5971c), `.env.local` copied, build + dev OK.
 > 2026-11-25: user asked: full visual redesign + full bug scan/fix + tests + deploy to Rizuan OCI box mkb-007
@@ -10,7 +27,13 @@
 > Branch `feature/oci-redesign`: Plan_WIP + test tooling committed (repo git identity set to KKABIR07).
 > WAVE 1 running in worktrees: backend (Phase 1 + TMDB server-side + /api/health), foundation (tokens, shell,
 > primitives, media comps, stores), infra (Docker, caps, Caddy, deploy.sh, next.config, robots).
-> NEXT: merge wave 1 → WAVE 2 page agents (P1 browse pages, P2 detail/user pages) → tests/e2e → deploy.
+> Wave 1 MERGED (infra fdf85ab, backend 8ae2c9c, foundation + type fix c9c1499); axios/framer-motion/gsap removed.
+> NOW RUNNING IN PARALLEL (user: "start all work in parallel"): DB-port (Mongo→Postgres/Drizzle), infra update
+> (db service, mkmovies.slice 1 GB, backups, disk guard, .next/cache on disk), Page Agent 1 (home/browse/discover/
+> search/genre/stars), Page Agent 2 (movie/tv/person/shorts/feed/watchlist/profile/about/blog/sitemap + server sync),
+> QA agent (Playwright e2e, security, perf, bundle secret scan).
+> THEN (integrator): merge all → delete legacy components + three/@react-three deps → cacheMaxMemorySize in
+> next.config → full test run → screenshots to user → deploy → live smoke → Vercel removal (confirm) → docs → PR.
 > Dev on this PC needs NODE_OPTIONS=--require=<scratchpad>/dev-dns.cjs (Jio blocks TMDB DNS). JWT_SECRET in
 > .env.local is a placeholder — prod gets a generated one. Mockup: https://claude.ai/artifact/25VY1mgzhLi6zz33aikZh8
 

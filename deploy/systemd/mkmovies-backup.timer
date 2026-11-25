@@ -1,0 +1,12 @@
+# Managed by scripts/setup-host.sh.
+[Unit]
+Description=MovieVerse AI (mkmovies) — nightly database backup
+
+[Timer]
+OnCalendar=*-*-* 03:17:00
+RandomizedDelaySec=10min
+Persistent=true
+Unit=mkmovies-backup.service
+
+[Install]
+WantedBy=timers.target

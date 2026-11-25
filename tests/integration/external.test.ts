@@ -13,17 +13,18 @@ vi.mock('groq-sdk', () => ({
   },
 }));
 
-import { startDb, stopDb, resetDb, makeReq, createUser } from './helpers';
+import { eq, sql } from 'drizzle-orm';
+import { startDb, stopDb, resetDb, makeReq, createUser, db, withDbDown } from './helpers';
 import { GET as tmdbGet } from '@/app/api/tmdb/[...path]/route';
 import { POST as aiPost } from '@/app/api/ai/recommend/route';
 import { GET as shortsGet } from '@/app/api/youtube/shorts/route';
 import { GET as ytStatus } from '@/app/api/youtube/status/route';
 import { GET as health } from '@/app/api/health/route';
 import { GET as ready } from '@/app/api/ready/route';
-import { YoutubeCache } from '@/lib/db/models';
+import { youtubeCache } from '@/lib/db/schema';
+import { sweepYoutubeCache } from '@/lib/db/maintenance';
+import * as dbClient from '@/lib/db/client';
 import { clearMemoryCache } from '@/lib/server/youtube';
-import * as mongooseMod from '@/lib/db/mongoose';
-import mongoose from 'mongoose';
 
 beforeAll(startDb);
 afterAll(stopDb);
@@ -182,7 +183,7 @@ describe('YouTube', () => {
     expect((await res.json()).code).toBe('NO_KEY');
   });
 
-  it('caches in Mongo (24h TTL) keyed by normalised query; second call does not hit YouTube', async () => {
+  it('caches in Postgres (24h expiry) keyed by normalised query; second call does not hit YouTube', async () => {
     fetchMock.mockImplementation(async () => okJson(ytBody));
     const r1 = await shortsGet(makeReq('/api/youtube/shorts?q=Dune%20%20Part%20Two&n=2'), undefined);
     expect(r1.status).toBe(200);
@@ -194,10 +195,11 @@ describe('YouTube', () => {
     expect(url.searchParams.get('q')).toBe('Dune  Part Two #shorts');
     expect(url.searchParams.get('videoDuration')).toBe('short');
 
-    const doc = await YoutubeCache.findOne({ key: 'shorts:2:dune part two' }).lean();
-    expect(doc?.items).toHaveLength(1);
-    const ttl = (await YoutubeCache.collection.indexes()).find((i) => i.key.createdAt === 1);
-    expect(ttl?.expireAfterSeconds).toBe(86400);
+    const [row] = await db.select().from(youtubeCache).where(eq(youtubeCache.key, 'shorts:2:dune part two'));
+    expect(row.payload).toHaveLength(1);
+    const ttlMs = row.expiresAt.getTime() - Date.now();
+    expect(ttlMs).toBeGreaterThan(86400_000 - 60_000);
+    expect(ttlMs).toBeLessThanOrEqual(86400_000);
 
     clearMemoryCache(); // force the DB layer
     const r2 = await shortsGet(makeReq('/api/youtube/shorts?q=dune part two&n=2'), undefined);
@@ -207,16 +209,30 @@ describe('YouTube', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('expired DB rows are ignored and swept', async () => {
+    fetchMock.mockImplementation(async () => okJson(ytBody));
+    const past = new Date(Date.now() - 1000);
+    await db.insert(youtubeCache).values({ key: 'shorts:3:stale', payload: [], expiresAt: past });
+    const r = await shortsGet(makeReq('/api/youtube/shorts?q=stale'), undefined);
+    expect(r.headers.get('X-Cache')).toBe('miss'); // the expired row was not served
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // the upsert refreshed the row; add another expired one and sweep
+    await db.insert(youtubeCache).values({ key: 'shorts:3:old', payload: [], expiresAt: past });
+    expect(await sweepYoutubeCache(db)).toBe(1);
+    const keys = (await db.select({ key: youtubeCache.key }).from(youtubeCache)).map((k) => k.key);
+    expect(keys).toEqual(['shorts:3:stale']);
+  });
+
   it('falls back to the in-memory cache when the DB is down', async () => {
     fetchMock.mockImplementation(async () => okJson(ytBody));
-    const spy = vi.spyOn(mongooseMod, 'connectDB').mockRejectedValue(new Error('db down'));
-    const r1 = await shortsGet(makeReq('/api/youtube/shorts?q=arrival&type=videos'), undefined);
-    expect(r1.status).toBe(200);
-    const r2 = await shortsGet(makeReq('/api/youtube/shorts?q=arrival&type=videos'), undefined);
-    expect(r2.headers.get('X-Cache')).toBe('memory');
+    await withDbDown(async () => {
+      const r1 = await shortsGet(makeReq('/api/youtube/shorts?q=arrival&type=videos'), undefined);
+      expect(r1.status).toBe(200);
+      const r2 = await shortsGet(makeReq('/api/youtube/shorts?q=arrival&type=videos'), undefined);
+      expect(r2.headers.get('X-Cache')).toBe('memory');
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(new URL(String(fetchMock.mock.calls[0][0])).searchParams.get('videoDuration')).toBeNull();
-    spy.mockRestore();
   });
 
   it('quota exhausted → 503 YOUTUBE_QUOTA; other upstream errors → 502', async () => {
@@ -233,7 +249,7 @@ describe('YouTube', () => {
 
 describe('health / ready', () => {
   it('/api/health is DB-free', async () => {
-    const spy = vi.spyOn(mongooseMod, 'connectDB');
+    const spy = vi.spyOn(dbClient, 'getDb');
     const res = health();
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true, version: expect.any(String) });
@@ -245,17 +261,27 @@ describe('health / ready', () => {
     const up = await ready();
     expect(up.status).toBe(200);
     expect(await up.json()).toMatchObject({ ok: true, db: 'up' });
-    const db = mongoose.connection.db!;
-    const spy = vi.spyOn(db, 'admin').mockReturnValue({ ping: () => Promise.reject(new Error('down')) } as never);
-    const down = await ready();
+    const down = await withDbDown(() => ready());
     expect(down.status).toBe(503);
     expect(await down.json()).toMatchObject({ ok: false, db: 'down' });
 
-    // a hung ping is cut off by the 2 s timeout
-    spy.mockReturnValue({ ping: () => new Promise(() => {}) } as never);
+    // a hung `select 1` is cut off by the 2 s timeout
+    const spy = vi.spyOn(db, 'execute').mockReturnValue(new Promise(() => {}) as never);
     const t0 = Date.now();
     expect((await ready()).status).toBe(503);
     expect(Date.now() - t0).toBeLessThan(3500);
     spy.mockRestore();
+    expect(await db.execute(sql`select 1`)).toBeTruthy();
+  });
+
+  it('/api/ready is 503 (not a crash) when DATABASE_URL is missing', async () => {
+    vi.stubEnv('DATABASE_URL', '');
+    dbClient.setDbForTests(null);
+    try {
+      const res = await ready();
+      expect(res.status).toBe(503);
+    } finally {
+      dbClient.setDbForTests(db);
+    }
   });
 });

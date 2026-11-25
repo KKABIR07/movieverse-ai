@@ -1,0 +1,16 @@
+# Managed by scripts/setup-host.sh — nightly pg_dump of the mkmovies database (see mkmovies-backup.timer).
+[Unit]
+Description=MovieVerse AI (mkmovies) — PostgreSQL backup (pg_dump -Fc, verified, pruned to <= 1 GiB)
+After=docker.service
+Requires=docker.service
+RequiresMountsFor=/opt/mkmovies
+
+[Service]
+Type=oneshot
+Environment=APP_DIR=/opt/mkmovies
+Environment=BACKUP_DIR=/opt/mkmovies/backups
+Environment=DB_CONTAINER=mkmovies-db
+ExecStart=/usr/local/lib/mkmovies/backup.sh --label nightly
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=30min

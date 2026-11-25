@@ -1,5 +1,5 @@
 /**
- * Error types shared by route handlers. Pure module (no Next / Mongo imports).
+ * Error types shared by route handlers. Pure module (no Next / DB driver imports).
  */
 
 export class HttpError extends Error {
@@ -70,19 +70,67 @@ function defaultCode(status: number): string {
   }
 }
 
-const DB_UNAVAILABLE_NAMES = new Set([
-  'MongooseServerSelectionError',
-  'MongoServerSelectionError',
-  'MongoNetworkError',
-  'MongoNetworkTimeoutError',
-  'MongoTopologyClosedError',
-  'MongoNotConnectedError',
-  'MongoPoolClearedError',
-]);
+// ─── PostgreSQL error classification ─────────────────────────────────────────
+// Drizzle wraps driver errors (DrizzleQueryError → cause = pg DatabaseError), so every helper
+// walks the `cause` chain.
 
-/** True for driver errors that mean "DB unreachable" (→ 503) rather than a bug (→ 500). */
+function* causeChain(err: unknown): Generator<unknown> {
+  let cur: unknown = err;
+  for (let depth = 0; cur && depth < 6; depth++) {
+    yield cur;
+    cur = (cur as { cause?: unknown }).cause;
+  }
+}
+
+/** First string `code` found on the error or its causes (SQLSTATE like '23505', or errno like 'ECONNREFUSED'). */
+export function dbErrorCode(err: unknown): string | undefined {
+  for (const e of causeChain(err)) {
+    const code = (e as { code?: unknown }).code;
+    if (typeof code === 'string') return code;
+  }
+  return undefined;
+}
+
+/** SQLSTATE of a Postgres error (5 chars), if any. */
+export function pgSqlState(err: unknown): string | undefined {
+  const code = dbErrorCode(err);
+  return code && /^(?=.*\d)[0-9A-Z]{5}$/.test(code) ? code : undefined;
+}
+
+/** Name of the violated constraint (pg `constraint` field), if any. */
+export function pgConstraint(err: unknown): string | undefined {
+  for (const e of causeChain(err)) {
+    const c = (e as { constraint?: unknown }).constraint;
+    if (typeof c === 'string') return c;
+  }
+  return undefined;
+}
+
+export const PG = {
+  UNIQUE_VIOLATION: '23505',
+  FOREIGN_KEY_VIOLATION: '23503',
+  CHECK_VIOLATION: '23514',
+  NOT_NULL_VIOLATION: '23502',
+  INVALID_TEXT_REPRESENTATION: '22P02',
+  STRING_DATA_RIGHT_TRUNCATION: '22001',
+  NUMERIC_VALUE_OUT_OF_RANGE: '22003',
+} as const;
+
+const NET_ERRNOS = new Set(['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH']);
+// 08xxx connection exception · 57P01-03 admin/crash shutdown, cannot connect now · 53300 too many connections
+// · 57014 query_canceled (statement_timeout) · 40P01 deadlock (transient)
+const UNAVAILABLE_SQLSTATE = /^(08...|57P0[1-3]|53300|57014|40P01)$/;
+const UNAVAILABLE_MESSAGE =
+  /timeout exceeded when trying to connect|Connection terminated|connection timeout|Client has encountered a connection error|Cannot use a pool after calling end/i;
+
+/** True for errors that mean "DB unreachable / overloaded" (→ 503) rather than a bug (→ 500). */
 export function isDbUnavailableError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  if (err instanceof DatabaseUnavailableError) return true;
-  return DB_UNAVAILABLE_NAMES.has(err.name);
+  for (const e of causeChain(err)) {
+    if (e instanceof DatabaseUnavailableError) return true;
+    const code = (e as { code?: unknown }).code;
+    if (typeof code === 'string' && (NET_ERRNOS.has(code) || UNAVAILABLE_SQLSTATE.test(code))) return true;
+    if (e instanceof Error && UNAVAILABLE_MESSAGE.test(e.message)) return true;
+    if (e instanceof AggregateError && e.errors.some((x) => isDbUnavailableError(x))) return true;
+  }
+  return false;
 }

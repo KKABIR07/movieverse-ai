@@ -15,9 +15,14 @@ test-results
 Plan_WIP.md
 CLAUDE_REFERENCE
 ss
-# On the box, /opt/mkmovies is an ext4 loop mount: lost+found is root-only and must not be sent.
+# On the box, /opt/mkmovies (the build context) is also where all persistent state lives.
+# None of it may enter the image — and pgdata/backups/logs are not readable by the deploy user anyway.
 lost+found
 data
+pgdata
 backups
+logs
+cache
+DISK_WARNING
 scripts
 deploy

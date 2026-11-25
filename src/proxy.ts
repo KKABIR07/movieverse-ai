@@ -56,7 +56,9 @@ function isSameOrigin(req: NextRequest, origin: string): boolean {
 function hasBody(req: NextRequest): boolean {
   const len = req.headers.get('content-length');
   if (len !== null) return Number(len) > 0;
-  return req.headers.has('transfer-encoding') || req.body !== null;
+  // A body is always announced by Content-Length or chunked Transfer-Encoding. `req.body` is a
+  // (possibly empty) stream for every POST/DELETE here, so it can't tell us anything.
+  return req.headers.has('transfer-encoding');
 }
 
 export function proxy(req: NextRequest) {

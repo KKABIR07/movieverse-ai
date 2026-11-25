@@ -1,5 +1,6 @@
-import { connectDB } from '@/lib/db/mongoose';
-import { Follow } from '@/lib/db/models';
+import { count, inArray } from 'drizzle-orm';
+import { getDb } from '@/lib/db/client';
+import { follows } from '@/lib/db/schema';
 import { json, readQuery, withHandler } from '@/lib/server/http';
 import { followCountsQuery } from '@/lib/server/validation';
 
@@ -12,12 +13,12 @@ const CACHE = { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=12
 export const GET = withHandler('follows.counts', async (req) => {
   if (!req.nextUrl.searchParams.get('ids')) return json({ counts: {} }, { headers: CACHE });
   const { ids } = readQuery(req, followCountsQuery);
-  await connectDB();
-  const rows = await Follow.aggregate<{ _id: number; count: number }>([
-    { $match: { personId: { $in: ids } } },
-    { $group: { _id: '$personId', count: { $sum: 1 } } },
-  ]);
+  const rows = await getDb()
+    .select({ personId: follows.personId, n: count() })
+    .from(follows)
+    .where(inArray(follows.personId, ids))
+    .groupBy(follows.personId);
   const counts: Record<number, number> = {};
-  for (const r of rows) counts[r._id] = r.count;
+  for (const r of rows) counts[r.personId] = r.n;
   return json({ counts }, { headers: CACHE });
 });

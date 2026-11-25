@@ -1,5 +1,7 @@
-import { connectDB } from '@/lib/db/mongoose';
-import { ChatMessage, type IChatMessage } from '@/lib/db/models';
+import { and, desc, eq, gt, type SQL } from 'drizzle-orm';
+import { getDb } from '@/lib/db/client';
+import { chatMessages } from '@/lib/db/schema';
+import { maybeSweep } from '@/lib/db/maintenance';
 import { getOptionalSession, requireSession } from '@/lib/db/auth';
 import { json, readJson, readQuery, withHandler } from '@/lib/server/http';
 import { chatListQuery, chatPostSchema } from '@/lib/server/validation';
@@ -22,25 +24,36 @@ const PAGE = 50;
 export const GET = withHandler('chat.GET', async (req) => {
   const { roomId, after } = readQuery(req, chatListQuery);
   const session = await getOptionalSession(req);
-  await connectDB();
-  const filter: Record<string, unknown> = { roomId };
-  if (after) filter.createdAt = { $gt: new Date(after) };
-  const docs = await ChatMessage.find(filter).sort({ createdAt: -1, _id: -1 }).limit(PAGE).lean<IChatMessage[]>();
-  return json({ messages: docs.reverse().map((m) => toChatDTO(m, session?.userId)) });
+  const where: SQL[] = [eq(chatMessages.roomId, roomId)];
+  if (after) where.push(gt(chatMessages.createdAt, new Date(after)));
+  const rows = await getDb()
+    .select()
+    .from(chatMessages)
+    .where(and(...where))
+    .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
+    .limit(PAGE);
+  return json({ messages: rows.reverse().map((m) => toChatDTO(m, session?.userId)) });
 });
 
-/** POST /api/chat  (auth) body { roomId?, text 1..500 } → 201 { message: ChatMessageDTO } */
+/**
+ * POST /api/chat  (auth) body { roomId?, text 1..500 } → 201 { message: ChatMessageDTO }
+ * ~1% of posts also trigger the 30-day retention sweep (fire-and-forget).
+ */
 export const POST = withHandler('chat.POST', async (req) => {
   const s = await requireSession(req);
   const { roomId, text } = await readJson(req, chatPostSchema);
-  await connectDB();
-  const msg = await ChatMessage.create({
-    roomId,
-    userId: s.userId,
-    userName: s.name,
-    userInitials: s.initials,
-    color: userColor(s.userId),
-    text,
-  });
-  return json({ message: toChatDTO(msg.toObject() as IChatMessage, s.userId) }, { status: 201 });
+  const db = getDb();
+  const [msg] = await db
+    .insert(chatMessages)
+    .values({
+      roomId,
+      userId: s.userId,
+      userName: s.name,
+      userInitials: s.initials,
+      color: userColor(s.userId),
+      text,
+    })
+    .returning();
+  maybeSweep('chat', db);
+  return json({ message: toChatDTO(msg, s.userId) }, { status: 201 });
 });

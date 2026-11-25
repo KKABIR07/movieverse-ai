@@ -1,7 +1,16 @@
 import type { NextRequest } from 'next/server';
-import { connectDB } from '@/lib/db/mongoose';
-import { User, type IUser } from '@/lib/db/models';
-import { clearAuthCookie, hasAuthCookie, verifyToken, AUTH_COOKIE, toUserDTO, type UserDTO } from '@/lib/db/auth';
+import { eq } from 'drizzle-orm';
+import { getDb } from '@/lib/db/client';
+import { users } from '@/lib/db/schema';
+import {
+  clearAuthCookie,
+  hasAuthCookie,
+  verifyToken,
+  AUTH_COOKIE,
+  toUserDTO,
+  userPublicColumns,
+  type UserDTO,
+} from '@/lib/db/auth';
 import { json, getRequestId } from '@/lib/server/http';
 import { logger } from '@/lib/server/logger';
 
@@ -32,11 +41,8 @@ export async function GET(req: NextRequest) {
   if (!session) return anonymous(true);
 
   try {
-    await connectDB();
-    const user = await User.findById(session.userId)
-      .select('name email initials avatar tokenVersion createdAt')
-      .lean<IUser>();
-    if (!user || (user.tokenVersion ?? 0) !== session.tokenVersion) return anonymous(true);
+    const [user] = await getDb().select(userPublicColumns).from(users).where(eq(users.id, session.userId)).limit(1);
+    if (!user || user.tokenVersion !== session.tokenVersion) return anonymous(true);
     return json<{ user: UserDTO }>({ user: toUserDTO(user) }, { headers });
   } catch (err) {
     logger.warn('auth.me: degraded (db unavailable)', { requestId, err });

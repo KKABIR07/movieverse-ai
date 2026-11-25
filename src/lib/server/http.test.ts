@@ -22,18 +22,37 @@ describe('withHandler error mapping', () => {
     expect(body.requestId).toBeTruthy();
   });
 
-  it('Mongoose CastError / ValidationError → 400', async () => {
-    for (const name of ['CastError', 'ValidationError']) {
-      const e = Object.assign(new Error('x'), { name });
-      expect((await throwing(e)(req(), undefined)).status).toBe(400);
+  // node-postgres DatabaseError as wrapped by Drizzle (DrizzleQueryError → cause)
+  const pgErr = (code: string, extra: Record<string, unknown> = {}) =>
+    Object.assign(new Error('Failed query: insert into …'), {
+      name: 'DrizzleQueryError',
+      cause: Object.assign(new Error('pg says no'), { name: 'error', code, ...extra }),
+    });
+
+  it('Postgres 23505 unique_violation → 409 CONFLICT (wrapped or bare)', async () => {
+    for (const e of [pgErr('23505', { constraint: 'users_email_key' }), Object.assign(new Error('dup'), { code: '23505' })]) {
+      const res = await throwing(e)(req(), undefined);
+      expect(res.status).toBe(409);
+      expect((await res.json()).code).toBe('CONFLICT');
     }
   });
 
-  it('E11000 → 409', async () => {
-    const e = Object.assign(new Error('E11000 duplicate key'), { code: 11000 });
-    const res = await throwing(e)(req(), undefined);
-    expect(res.status).toBe(409);
-    expect((await res.json()).code).toBe('CONFLICT');
+  it('Postgres check / not-null / bad text / too long / out of range → 400 BAD_REQUEST', async () => {
+    for (const code of ['23514', '23502', '22P02', '22001', '22003']) {
+      const res = await throwing(pgErr(code))(req(), undefined);
+      expect(res.status).toBe(400);
+      expect((await res.json()).code).toBe('BAD_REQUEST');
+    }
+  });
+
+  it('Postgres 23503 foreign_key_violation → 404', async () => {
+    expect((await throwing(pgErr('23503'))(req(), undefined)).status).toBe(404);
+  });
+
+  it('other SQL errors → 500 without leaking the query', async () => {
+    const res = await throwing(pgErr('42P01'))(req(), undefined); // undefined_table
+    expect(res.status).toBe(500);
+    expect(await res.text()).not.toContain('insert into');
   });
 
   it('HttpError → its status, code and headers', async () => {
@@ -50,12 +69,26 @@ describe('withHandler error mapping', () => {
     expect(text).not.toContain('JWT_SECRET');
   });
 
-  it('DB unavailable (driver error names) → 503 + Retry-After', async () => {
-    const e = Object.assign(new Error('x'), { name: 'MongooseServerSelectionError' });
-    const res = await throwing(e)(req(), undefined);
-    expect(res.status).toBe(503);
-    expect(res.headers.get('Retry-After')).toBe('10');
-    expect((await throwing(new DatabaseUnavailableError())(req(), undefined)).status).toBe(503);
+  it('DB unavailable (connection refused, shutdown, pool timeout, statement timeout) → 503 + Retry-After', async () => {
+    const cases: unknown[] = [
+      Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), { code: 'ECONNREFUSED' }),
+      pgErr('ECONNRESET'),
+      pgErr('57P01'), // admin_shutdown
+      pgErr('57P03'), // cannot_connect_now (starting up)
+      pgErr('53300'), // too_many_connections
+      pgErr('08006'), // connection_failure
+      pgErr('57014'), // statement_timeout
+      new Error('timeout exceeded when trying to connect'),
+      Object.assign(new Error('x'), { cause: new Error('Connection terminated unexpectedly') }),
+      new AggregateError([Object.assign(new Error('a'), { code: 'ECONNREFUSED' })], 'all failed'),
+      new DatabaseUnavailableError(),
+    ];
+    for (const e of cases) {
+      const res = await throwing(e)(req(), undefined);
+      expect(res.status, String(e)).toBe(503);
+      expect(res.headers.get('Retry-After')).toBe('10');
+      expect((await res.json()).code).toBe('DB_UNAVAILABLE');
+    }
   });
 
   it('unknown errors → 500 generic message + request id header', async () => {

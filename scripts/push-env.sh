@@ -2,8 +2,8 @@
 # Securely push selected secrets from a local env file to the remote /opt/mkmovies/.env.
 #
 #   ./scripts/push-env.sh                        # push the default key set from ./.env.production
-#   ./scripts/push-env.sh MONGODB_URI GROQ_API_KEY
-#   ./scripts/push-env.sh --restart              # also recreate the container so it picks them up
+#   ./scripts/push-env.sh GROQ_API_KEY YOUTUBE_API_KEY
+#   ./scripts/push-env.sh --restart              # also recreate the web container so it picks them up
 #   ./scripts/push-env.sh --dry-run              # list which keys would be pushed (never values)
 #
 # Env overrides: ENV_FILE (default .env.production, gitignored), DEPLOY_HOST, DEPLOY_USER,
@@ -21,7 +21,9 @@ DEPLOY_KEY="${DEPLOY_KEY:-/d/DOWNLOAD/Rizuan-oci-vps/ssh-key-2026-11-11.key}"
 APP_DIR="${APP_DIR:-/opt/mkmovies}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="${ENV_FILE:-$ROOT/.env.production}"
-DEFAULT_KEYS="TMDB_BEARER TMDB_API_KEY MONGODB_URI JWT_SECRET GROQ_API_KEY YOUTUBE_API_KEY SITE_URL NEXT_PUBLIC_SITE_URL"
+# POSTGRES_PASSWORD / DATABASE_URL are generated on the box by deploy.sh and are NOT pushed by default
+# (changing POSTGRES_PASSWORD after initdb would lock the app out). Name them explicitly only to restore them.
+DEFAULT_KEYS="TMDB_BEARER TMDB_API_KEY JWT_SECRET GROQ_API_KEY YOUTUBE_API_KEY SITE_URL NEXT_PUBLIC_SITE_URL"
 
 RESTART=0
 DRY_RUN=0
@@ -76,7 +78,7 @@ cat .env.merge.tmp > .env
 chmod 600 .env
 echo "remote .env updated ($(grep -c "=" .env) keys, mode $(stat -c %a .env))"'
 if [[ $RESTART -eq 1 ]]; then
-  REMOTE_SCRIPT+=$'\n''docker compose -p mkmovies --env-file .env up -d --no-build && echo "container recreated"'
+  REMOTE_SCRIPT+=$'\n''docker compose -p mkmovies --env-file .env up -d --no-build --no-deps web && echo "web container recreated"'
 fi
 
 printf '%s' "$payload" | ssh -i "$DEPLOY_KEY" -o BatchMode=yes -o ConnectTimeout=20 -o StrictHostKeyChecking=accept-new \

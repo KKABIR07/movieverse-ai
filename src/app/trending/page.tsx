@@ -1,65 +1,68 @@
-'use client';
+import type { Metadata } from 'next';
+import { connection } from 'next/server';
+import { getTrending } from '@/lib/tmdb/server';
+import { BrowseList } from '@/components/browse/BrowseList';
+import { load } from '@/components/browse/BrowseStates';
+import { FilterLinks } from '@/components/browse/FilterLinks';
+import { pageMeta } from '@/components/browse/meta';
+import { buildHref, parsePage, pick, type RawParams } from '@/components/browse/params';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { TrendingUp } from 'lucide-react';
-import { tmdb } from '@/lib/tmdb';
-import { MovieGrid } from '@/components/movie/MovieGrid';
+const TYPES = ['all', 'movie', 'tv'] as const;
+const WINDOWS = ['week', 'day'] as const;
+type Props = { searchParams: Promise<RawParams> };
 
-export default function TrendingPage() {
-  const [timeWindow, setTimeWindow] = useState<'day' | 'week'>('week');
-  const [mediaType, setMediaType] = useState<'movie' | 'tv'>('movie');
+const TYPE_LABEL = { all: 'Movies & shows', movie: 'Movies', tv: 'TV shows' } as const;
 
-  const { data: movieData, isLoading: movieLoading } = useQuery({
-    queryKey: ['trending', 'movie', timeWindow],
-    queryFn: () => tmdb.movie.trending(timeWindow),
-    enabled: mediaType === 'movie',
+export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
+  const sp = await searchParams;
+  const type = pick(sp.type, TYPES, 'all');
+  const title = type === 'all' ? 'Trending movies & shows' : `Trending ${TYPE_LABEL[type].toLowerCase()}`;
+  return pageMeta({
+    title,
+    description: 'What everyone is watching today and this week, updated hourly from TMDB.',
+    path: buildHref('/trending', { type }, { type: 'all' }),
   });
-  const { data: tvData, isLoading: tvLoading } = useQuery({
-    queryKey: ['trending', 'tv', timeWindow],
-    queryFn: () => tmdb.tv.trending(timeWindow),
-    enabled: mediaType === 'tv',
-  });
-  const data = mediaType === 'movie' ? movieData : tvData;
-  const isLoading = mediaType === 'movie' ? movieLoading : tvLoading;
+}
+
+export default async function TrendingPage({ searchParams }: Props) {
+  await connection();
+  const sp = await searchParams;
+  const type = pick(sp.type, TYPES, 'all');
+  const window = pick(sp.window, WINDOWS, 'week');
+  const page = parsePage(sp.page);
+  const href = (p: Partial<{ type: string; window: string; page: number }>) =>
+    buildHref('/trending', { type, window, page, ...p }, { type: 'all', window: 'week' });
+
+  const result = await load('trending', getTrending(type, window, page));
 
   return (
-    <div className="container mx-auto px-4 md:px-8 py-24 min-h-screen">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2.5 rounded-xl bg-[var(--accent-primary)]/10 text-[var(--accent-primary)]">
-          <TrendingUp size={22} />
+    <BrowseList
+      eyebrow="Trending"
+      title={type === 'all' ? 'Trending movies & shows' : `Trending ${TYPE_LABEL[type].toLowerCase()}`}
+      description={window === 'day' ? 'The most-watched titles in the last 24 hours.' : 'The most-watched titles this week.'}
+      filters={
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-6">
+          <FilterLinks
+            label="Content type"
+            value={type}
+            options={TYPES.map((t) => ({ value: t, label: t === 'all' ? 'All' : TYPE_LABEL[t], href: href({ type: t, page: 1 }) }))}
+          />
+          <FilterLinks
+            label="Time window"
+            value={window}
+            options={[
+              { value: 'day', label: 'Today', href: href({ window: 'day', page: 1 }) },
+              { value: 'week', label: 'This week', href: href({ window: 'week', page: 1 }) },
+            ]}
+          />
         </div>
-        <h1 className="text-3xl font-black text-[var(--text-primary)]">Trending</h1>
-      </div>
-
-      {/* Toggles */}
-      <div className="flex flex-wrap gap-3 mb-8">
-        <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
-          {(['movie', 'tv'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setMediaType(t)}
-              className={`px-4 py-2 text-sm font-medium capitalize transition-colors ${mediaType === t ? 'bg-[var(--accent-primary)] text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
-            >
-              {t === 'movie' ? 'Movies' : 'TV Shows'}
-            </button>
-          ))}
-        </div>
-        <div className="flex rounded-xl border border-[var(--border)] overflow-hidden">
-          {(['day', 'week'] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTimeWindow(t)}
-              className={`px-4 py-2 text-sm font-medium capitalize transition-colors ${timeWindow === t ? 'bg-[var(--accent-primary)] text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'}`}
-            >
-              {t === 'day' ? 'Today' : 'This Week'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-      <MovieGrid items={(data?.results ?? []) as any[]} mediaType={mediaType} loading={isLoading ?? false} skeletonCount={20} />
-    </div>
+      }
+      result={result}
+      mediaType={type === 'all' ? undefined : type}
+      page={page}
+      hrefForPage={(p) => href({ page: p })}
+      retryHref={href({})}
+      label={`Trending ${TYPE_LABEL[type].toLowerCase()}`}
+    />
   );
 }

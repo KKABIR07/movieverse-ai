@@ -1,64 +1,104 @@
-'use client';
+import type { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { connection } from 'next/server';
+import { cache } from 'react';
+import { discover, getGenres, type MediaKind } from '@/lib/tmdb/server';
+import type { Genre } from '@/types/tmdb';
+import { BrowseList } from '@/components/browse/BrowseList';
+import { load } from '@/components/browse/BrowseStates';
+import { FilterLinks } from '@/components/browse/FilterLinks';
+import { genreSwatch } from '@/components/browse/GenreTiles';
+import { pageMeta } from '@/components/browse/meta';
+import { buildHref, parsePage, pick, type RawParams } from '@/components/browse/params';
+import { cn } from '@/components/ui/cn';
 
-import { use, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
-import { tmdb } from '@/lib/tmdb';
-import { MovieGrid } from '@/components/movie/MovieGrid';
+const SORTS = ['popular', 'rating', 'newest'] as const;
+const SORT_TMDB = { popular: 'popularity.desc', rating: 'vote_average.desc', newest: 'primary_release_date.desc' } as const;
+const SORT_LABEL = { popular: 'Popular', rating: 'Top rated', newest: 'Newest' } as const;
 
-function GenreContent({ genreId }: { genreId: number }) {
-  const searchParams = useSearchParams();
-  const genreName = searchParams.get('name') ?? 'Genre';
-  const [page, setPage] = useState(1);
-  const [sortBy, setSortBy] = useState('popularity.desc');
+type Props = { params: Promise<{ id: string }>; searchParams: Promise<RawParams> };
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['genre', genreId, sortBy, page],
-    queryFn: () => tmdb.movie.discover({ with_genres: genreId.toString(), sort_by: sortBy, page }),
+/**
+ * Resolve a genre id against TMDB's movie + TV genre lists (cached 7 days, deduped per request).
+ * Returns which media kinds the genre exists for. Throws only if TMDB itself fails.
+ */
+const resolveGenre = cache(async (rawId: string): Promise<{ genre: Genre; kinds: MediaKind[] } | null> => {
+  if (!/^\d{1,9}$/.test(rawId)) return null;
+  const id = Number(rawId);
+  const [movie, tv] = await Promise.all([getGenres('movie'), getGenres('tv')]);
+  const inMovie = movie.find((g) => g.id === id);
+  const inTv = tv.find((g) => g.id === id);
+  const genre = inMovie ?? inTv;
+  if (!genre) return null;
+  return { genre, kinds: [...(inMovie ? (['movie'] as const) : []), ...(inTv ? (['tv'] as const) : [])] };
+});
+
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
+  const resolved = await resolveGenre(id).catch(() => null);
+  if (!resolved) return { title: 'Genre not found', robots: { index: false } };
+  const type = pick(sp.type, resolved.kinds, resolved.kinds[0]);
+  const noun = type === 'tv' ? 'TV shows' : 'movies';
+  return pageMeta({
+    title: `${resolved.genre.name} ${noun}`,
+    description: `The most popular ${resolved.genre.name.toLowerCase()} ${noun} right now, with TMDB ratings.`,
+    path: buildHref(`/genre/${resolved.genre.id}`, { type }, { type: resolved.kinds[0] }),
   });
-
-  return (
-    <div className="container mx-auto px-4 md:px-8 py-24 min-h-screen">
-      <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
-        <h1 className="text-3xl font-black text-[var(--text-primary)]">{genreName}</h1>
-        <select
-          value={sortBy}
-          onChange={(e) => { setSortBy(e.target.value); setPage(1); }}
-          className="px-3 py-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] text-sm text-[var(--text-secondary)] focus:outline-none"
-        >
-          <option value="popularity.desc">Most Popular</option>
-          <option value="vote_average.desc">Highest Rated</option>
-          <option value="release_date.desc">Newest First</option>
-        </select>
-      </div>
-
-      {data && (
-        <p className="text-sm text-[var(--text-muted)] mb-4">{data.total_results.toLocaleString()} movies</p>
-      )}
-
-      <MovieGrid items={data?.results ?? []} mediaType="movie" loading={isLoading} />
-
-      {data && data.total_pages > 1 && (
-        <div className="flex justify-center gap-3 mt-10">
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-4 py-2 rounded-xl border border-[var(--border)] text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 transition-colors">
-            Previous
-          </button>
-          <span className="px-4 py-2 text-sm text-[var(--text-muted)]">{page} / {Math.min(data.total_pages, 500)}</span>
-          <button onClick={() => setPage((p) => p + 1)} disabled={page >= data.total_pages || page >= 500} className="px-4 py-2 rounded-xl border border-[var(--border)] text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 transition-colors">
-            Next
-          </button>
-        </div>
-      )}
-    </div>
-  );
 }
 
-export default function GenrePage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default async function GenrePage({ params, searchParams }: Props) {
+  await connection();
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
+  // `?name=` from old links is ignored: the name always comes from TMDB.
+  const resolved = await resolveGenre(id);
+  if (!resolved) notFound();
+  const { genre, kinds } = resolved;
+
+  const type = pick(sp.type, kinds, kinds[0]);
+  const sort = pick(sp.sort, SORTS, 'popular');
+  const page = parsePage(sp.page);
+  const base = `/genre/${genre.id}`;
+  const href = (p: Partial<{ type: string; sort: string; page: number }>) =>
+    buildHref(base, { type, sort, page, ...p }, { type: kinds[0], sort: 'popular' });
+
+  const result = await load(
+    `discover/${type}?genre=${genre.id}`,
+    discover(type, { genres: [genre.id], sortBy: SORT_TMDB[sort], page }),
+  );
+  const noun = type === 'tv' ? 'TV shows' : 'movies';
+
   return (
-    <Suspense>
-      <GenreContent genreId={parseInt(id, 10)} />
-    </Suspense>
+    <BrowseList
+      eyebrow={
+        <span className="inline-flex items-center gap-2">
+          <span aria-hidden className={cn('inline-block h-1 w-6 rounded-full', genreSwatch(genre.id))} />
+          Genre
+        </span>
+      }
+      title={`${genre.name} ${noun}`}
+      description={`Browse ${genre.name.toLowerCase()} ${noun}, sorted by ${SORT_LABEL[sort].toLowerCase()}.`}
+      filters={
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-6">
+          {kinds.length > 1 && (
+            <FilterLinks
+              label="Content type"
+              value={type}
+              options={kinds.map((k) => ({ value: k, label: k === 'tv' ? 'TV shows' : 'Movies', href: href({ type: k, page: 1 }) }))}
+            />
+          )}
+          <FilterLinks
+            label="Sort by"
+            value={sort}
+            options={SORTS.map((s) => ({ value: s, label: SORT_LABEL[s], href: href({ sort: s, page: 1 }) }))}
+          />
+        </div>
+      }
+      result={result}
+      mediaType={type}
+      page={page}
+      hrefForPage={(p) => href({ page: p })}
+      retryHref={href({})}
+      label={`${genre.name} ${noun}`}
+    />
   );
 }
