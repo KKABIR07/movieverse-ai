@@ -1,0 +1,16 @@
+# Managed by scripts/setup-host.sh — do not edit on the box.
+# Shared resource cap for the WHOLE mkmovies application: both containers (mkmovies-web + mkmovies-db)
+# are placed in this slice via docker-compose `cgroup_parent`, so together they can never use more
+# than 1 GiB of RAM (no swap), 1.5 CPUs or 512 tasks. Per-container limits inside it: web 704m, db 288m.
+[Unit]
+Description=MovieVerse AI (mkmovies) — shared 1 GiB RAM cap for web + db
+Before=slices.target
+
+[Slice]
+MemoryAccounting=yes
+MemoryMax=1G
+MemorySwapMax=0
+CPUAccounting=yes
+CPUQuota=150%
+TasksAccounting=yes
+TasksMax=512

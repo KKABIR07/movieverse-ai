@@ -1,0 +1,11 @@
+# Managed by scripts/setup-host.sh — checks the 5 GiB /opt/mkmovies filesystem (see mkmovies-disk-guard.timer).
+[Unit]
+Description=MovieVerse AI (mkmovies) — disk guard for the 5 GiB app filesystem
+
+[Service]
+Type=oneshot
+Environment=APP_DIR=/opt/mkmovies
+Environment=BACKUP_DIR=/opt/mkmovies/backups
+Environment=LOG_DIR=/opt/mkmovies/logs
+ExecStart=/usr/local/lib/mkmovies/disk-guard.sh
+Nice=10

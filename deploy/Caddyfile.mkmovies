@@ -28,9 +28,11 @@ www.mkmovies.site {
 		}
 	}
 	log {
-		output file /var/log/caddy/mkmovies.access.log {
+		# Inside the 5 GiB /opt/mkmovies filesystem (dir created caddy-owned by scripts/setup-host.sh).
+		# Live file (<= 10 MiB) + 3 gzipped rolls: typically ~13 MB, never more than 40 MB.
+		output file __APP_DIR__/logs/caddy-access.log {
 			roll_size 10MiB
-			roll_keep 5
+			roll_keep 3
 			roll_keep_for 336h
 		}
 		format json

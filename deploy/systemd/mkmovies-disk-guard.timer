@@ -1,0 +1,12 @@
+# Managed by scripts/setup-host.sh.
+[Unit]
+Description=MovieVerse AI (mkmovies) — disk guard every 15 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+AccuracySec=1min
+Unit=mkmovies-disk-guard.service
+
+[Install]
+WantedBy=timers.target
