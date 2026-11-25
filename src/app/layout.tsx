@@ -5,20 +5,32 @@ import { Header } from '@/components/layout/Header';
 import { Footer } from '@/components/layout/Footer';
 import { MobileTabBar } from '@/components/layout/MobileTabBar';
 import { Providers } from '@/components/layout/Providers';
-import { SetupBanner } from '@/components/ui/SetupBanner';
 import { ChatWidget } from '@/components/chat/ChatWidget';
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'], display: 'swap' });
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'], display: 'swap' });
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://www.mkmovies.site';
+const DESCRIPTION =
+  'Discover what to watch: trending movies and TV shows, top 10 lists, new releases, genres and cast, with ratings from TMDB. Track it all in your watchlist.';
+
 export const metadata: Metadata = {
-  title: { default: 'mkmovies', template: '%s | mkmovies' },
-  description: 'Discover, review and track movies & TV shows with AI-powered recommendations.',
-  keywords: ['movies', 'TV shows', 'reviews', 'ratings', 'recommendations', 'streaming'],
+  metadataBase: new URL(SITE_URL),
+  title: { default: 'mkmovies: discover movies & TV shows', template: '%s · mkmovies' },
+  description: DESCRIPTION,
+  applicationName: 'mkmovies',
+  keywords: ['movies', 'TV shows', 'trending', 'what to watch', 'ratings', 'watchlist', 'streaming'],
   openGraph: {
-    title: 'mkmovies',
-    description: 'Your cinematic universe. Discover, review, and track movies & TV shows.',
     type: 'website',
+    siteName: 'mkmovies',
+    title: 'mkmovies: discover movies & TV shows',
+    description: DESCRIPTION,
+    locale: 'en_US',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'mkmovies: discover movies & TV shows',
+    description: DESCRIPTION,
   },
 };
 
@@ -50,7 +62,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
           <MobileTabBar />
           <ChatWidget />
-          <SetupBanner />
         </Providers>
       </body>
     </html>

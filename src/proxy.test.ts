@@ -8,7 +8,13 @@ const freshIp = () => `198.51.100.${++ipSeq % 250}-${ipSeq}`;
 function req(path: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}) {
   return new NextRequest(`http://localhost:3000${path}`, {
     method: init.method ?? 'GET',
-    headers: { host: 'localhost:3000', 'x-real-ip': freshIp(), ...init.headers },
+    // Real HTTP/1.1 requests from Caddy always announce a body with Content-Length (or chunked).
+    headers: {
+      host: 'localhost:3000',
+      'x-real-ip': freshIp(),
+      ...(init.body !== undefined ? { 'content-length': String(Buffer.byteLength(init.body)) } : {}),
+      ...init.headers,
+    },
     body: init.body,
   });
 }
@@ -69,7 +75,13 @@ describe('proxy', () => {
     expect((await res.json()).code).toBe('BAD_CONTENT_TYPE');
   });
 
+  it('403 for a chunked (no Content-Length) non-JSON body', async () => {
+    const res = proxy(req('/api/reviews', { method: 'POST', headers: { 'transfer-encoding': 'chunked', 'content-type': 'text/plain' } }));
+    expect(res.status).toBe(403);
+  });
+
   it('allows bodyless mutations (logout, DELETE ?id=) without content-type', () => {
+    expect(passes(proxy(req('/api/auth/logout', { method: 'POST', headers: { 'content-length': '0' } })))).toBe(true);
     expect(passes(proxy(req('/api/auth/logout', { method: 'POST' })))).toBe(true);
     expect(passes(proxy(req('/api/reviews?id=507f1f77bcf86cd799439011', { method: 'DELETE' })))).toBe(true);
   });

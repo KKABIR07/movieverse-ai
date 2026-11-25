@@ -6,15 +6,18 @@
  *
  * Error mapping:
  *   ZodError                          → 400 VALIDATION (with issues[])
- *   Mongoose CastError/ValidationError→ 400 BAD_REQUEST
- *   Mongo duplicate key (E11000)      → 409 CONFLICT
  *   HttpError (incl. ConfigError, DatabaseUnavailableError) → its status
- *   Mongo network / server-selection  → 503 DB_UNAVAILABLE
- *   anything else                     → 500 INTERNAL (generic message + requestId)
+ *   Postgres unreachable / overloaded (ECONNREFUSED, 08xxx, 57P0x, 53300, 57014, pool timeout)
+ *                                     → 503 DB_UNAVAILABLE + Retry-After
+ *   Postgres 23505 unique_violation   → 409 CONFLICT
+ *   Postgres 23514 / 23502 / 22P02 / 22001 / 22003 (check, not-null, bad text, too long, out of range)
+ *                                     → 400 BAD_REQUEST
+ *   Postgres 23503 foreign_key_violation → 404 NOT_FOUND (referenced row is gone)
+ *   anything else                    → 500 INTERNAL (generic message + requestId)
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { ZodError, type ZodType } from 'zod';
-import { HttpError, ConfigError, isDbUnavailableError } from './errors';
+import { HttpError, ConfigError, PG, isDbUnavailableError, pgSqlState } from './errors';
 import { logger } from './logger';
 
 export const MAX_JSON_BODY_BYTES = 64 * 1024;
@@ -70,21 +73,26 @@ export function mapError(err: unknown): MappedError {
       },
     };
   }
-  if (err instanceof Error) {
-    if (err.name === 'CastError' || err.name === 'ValidationError' || err.name === 'StrictModeError') {
-      return { status: 400, level: 'info', body: { error: 'Invalid request.', code: 'BAD_REQUEST' } };
-    }
-    if ((err as { code?: unknown }).code === 11000) {
+  if (isDbUnavailableError(err)) {
+    return {
+      status: 503,
+      level: 'warn',
+      headers: { 'Retry-After': '10' },
+      body: { error: 'Database is temporarily unavailable. Please try again shortly.', code: 'DB_UNAVAILABLE' },
+    };
+  }
+  switch (pgSqlState(err)) {
+    case PG.UNIQUE_VIOLATION:
       return { status: 409, level: 'info', body: { error: 'Resource already exists.', code: 'CONFLICT' } };
-    }
-    if (isDbUnavailableError(err)) {
-      return {
-        status: 503,
-        level: 'warn',
-        headers: { 'Retry-After': '10' },
-        body: { error: 'Database is temporarily unavailable. Please try again shortly.', code: 'DB_UNAVAILABLE' },
-      };
-    }
+    case PG.CHECK_VIOLATION:
+    case PG.NOT_NULL_VIOLATION:
+    case PG.INVALID_TEXT_REPRESENTATION:
+    case PG.STRING_DATA_RIGHT_TRUNCATION:
+    case PG.NUMERIC_VALUE_OUT_OF_RANGE:
+      return { status: 400, level: 'info', body: { error: 'Invalid request.', code: 'BAD_REQUEST' } };
+    case PG.FOREIGN_KEY_VIOLATION:
+      // The referenced row (review, user…) does not exist (any more).
+      return { status: 404, level: 'info', body: { error: 'Not found.', code: 'NOT_FOUND' } };
   }
   return { status: 500, level: 'error', body: { error: 'Something went wrong. Please try again.', code: 'INTERNAL' } };
 }
