@@ -1,6 +1,9 @@
 # Plan WIP
 
 ## SESSION_CONTEXT_RETRIEVAL
+> **2026-11-26 later: LIVE rev 7b557db** — Top 10 rail scroll fix (rails overflow-y-hidden; glyph overflow made the wheel
+> scroll the rail) + premium "Noir & Gold" logo/favicon/OG mark (user picked A of 3 concepts). QA 180 pass / 0 fail.
+>
 > **2026-11-26: trailers/logo/favicon LIVE (rev 6270711).** Also fixed: follow hydrate race; clicks during the
 > sign-in check opened the sign-in dialog. QA 179 pass / 0 fail; live trailer+icon tests 10/10. NEXT unchanged:
 > Vercel removal (CONFIRM), docs, PR, worktree cleanup.
