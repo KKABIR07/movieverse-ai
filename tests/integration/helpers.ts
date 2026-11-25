@@ -1,41 +1,79 @@
 /**
- * Integration-test helpers: in-memory MongoDB, NextRequest builders, user/session factories.
+ * Integration-test helpers: in-memory PGlite (real Postgres 17 in WASM) with the committed SQL
+ * migrations applied, NextRequest builders, user/session factories.
  * Route handlers are invoked directly (no HTTP server); no test touches the network.
  */
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import path from 'node:path';
+import { PGlite } from '@electric-sql/pglite';
+import { sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/pglite';
+import { migrate } from 'drizzle-orm/pglite/migrator';
 import { NextRequest } from 'next/server';
-import { connectDB, disconnectDB } from '@/lib/db/mongoose';
-import { ChatMessage, Follow, Review, User, Watchlist, YoutubeCache } from '@/lib/db/models';
+import { setDbForTests, type Db } from '@/lib/db/client';
+import * as schema from '@/lib/db/schema';
 import { invalidateTokenVersionCache, AUTH_COOKIE } from '@/lib/db/auth';
+import { resetSweepThrottle } from '@/lib/db/maintenance';
 
 export const TEST_JWT_SECRET = 'integration-test-secret-0123456789-abcdefghij';
+export const MIGRATIONS_FOLDER = path.join(process.cwd(), 'drizzle', 'migrations');
 
-let mongod: MongoMemoryServer | null = null;
+let client: PGlite | null = null;
+export let db: Db;
+
+/** Fresh in-memory PGlite with the migrations applied (no injection). */
+export async function createTestDb(): Promise<{ client: PGlite; db: Db }> {
+  const c = new PGlite();
+  const d = drizzle(c, { schema }) as unknown as Db;
+  await migrate(drizzle(c), { migrationsFolder: MIGRATIONS_FOLDER });
+  return { client: c, db: d };
+}
 
 export async function startDb(): Promise<void> {
   process.env.JWT_SECRET = TEST_JWT_SECRET;
-  mongod = await MongoMemoryServer.create();
-  process.env.MONGODB_URI = mongod.getUri('mkmovies-test');
-  await connectDB();
-  await Promise.all([User.init(), Review.init(), Watchlist.init(), ChatMessage.init(), Follow.init(), YoutubeCache.init()]);
+  ({ client, db } = await createTestDb());
+  setDbForTests(db);
 }
 
 export async function stopDb(): Promise<void> {
-  await disconnectDB();
-  await mongod?.stop();
-  mongod = null;
+  setDbForTests(null);
+  await client?.close();
+  client = null;
 }
 
 export async function resetDb(): Promise<void> {
   invalidateTokenVersionCache();
-  await Promise.all([
-    User.deleteMany({}),
-    Review.deleteMany({}),
-    Watchlist.deleteMany({}),
-    ChatMessage.deleteMany({}),
-    Follow.deleteMany({}),
-    YoutubeCache.deleteMany({}),
-  ]);
+  resetSweepThrottle();
+  await db.execute(
+    sql`truncate table review_likes, reviews, watchlist_items, chat_messages, follows, youtube_cache, users cascade`,
+  );
+}
+
+/** Rows of a raw `db.execute(sql…)` result (driver-agnostic Db types it as unknown). */
+export function rowsOf<T>(result: unknown): T[] {
+  return (result as { rows: T[] }).rows;
+}
+
+/**
+ * Run `fn` with getDb() returning a database whose every query fails like an unreachable Postgres
+ * (node-postgres ECONNREFUSED), then restore the real test DB.
+ */
+export async function withDbDown<T>(fn: () => Promise<T>, error: () => unknown = connRefused): Promise<T> {
+  type Settle = Parameters<Promise<never>['then']>;
+  const fail = () => Promise.reject<never>(error());
+  const chain: unknown = new Proxy(function () {}, {
+    get: (_t, prop) => (prop === 'then' ? (res: Settle[0], rej: Settle[1]) => fail().then(res, rej) : chain),
+    apply: () => chain,
+  });
+  setDbForTests(chain as Db);
+  try {
+    return await fn();
+  } finally {
+    setDbForTests(db);
+  }
+}
+
+export function connRefused(): Error {
+  return Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), { code: 'ECONNREFUSED', errno: -111 });
 }
 
 type Init = { method?: string; body?: unknown; cookie?: string; headers?: Record<string, string>; rawBody?: string };

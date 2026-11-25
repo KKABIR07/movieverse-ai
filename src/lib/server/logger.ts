@@ -5,7 +5,7 @@
  * - Sensitive keys are redacted recursively (password, token, authorization, cookie, secret, apiKey…).
  * - Errors are serialised to { name, message, code, status, stack? } (stack omitted in production).
  *
- * Safe to import from proxy.ts, route handlers and plain Node code (no Next/Mongo imports).
+ * Safe to import from proxy.ts, route handlers and plain Node code (no Next/DB imports).
  */
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';

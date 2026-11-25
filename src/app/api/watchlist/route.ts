@@ -1,9 +1,11 @@
 import type { NextRequest } from 'next/server';
-import { connectDB } from '@/lib/db/mongoose';
-import { Watchlist, type IWatchlistItem } from '@/lib/db/models';
+import { and, count, desc, eq } from 'drizzle-orm';
+import { getDb, type Db } from '@/lib/db/client';
+import { users, watchlistItems } from '@/lib/db/schema';
 import { requireSession } from '@/lib/db/auth';
-import { HttpError } from '@/lib/server/errors';
+import { HttpError, unauthorized } from '@/lib/server/errors';
 import { json, readJson, withHandler } from '@/lib/server/http';
+import { toWatchlistDTO, type WatchlistItemDTO } from '@/lib/server/dto';
 import {
   WATCHLIST_MAX_ITEMS,
   watchlistItemSchema,
@@ -11,63 +13,88 @@ import {
   type WatchlistItemInput,
 } from '@/lib/server/validation';
 
-/** Whitelisted, normalised item (unknown client fields are dropped by zod). */
-function toItem(input: WatchlistItemInput): IWatchlistItem {
-  const item: IWatchlistItem = {
-    id: input.id,
-    media_type: input.media_type,
-    poster_path: input.poster_path,
-    backdrop_path: input.backdrop_path,
-    vote_average: input.vote_average,
-    addedAt: input.addedAt ?? new Date().toISOString(),
-  };
-  if (input.title) item.title = input.title;
-  if (input.name) item.name = input.name;
-  if (input.release_date !== undefined) item.release_date = input.release_date;
-  if (input.first_air_date !== undefined) item.first_air_date = input.first_air_date;
-  return item;
+const itemColumns = {
+  tmdbId: watchlistItems.tmdbId,
+  mediaType: watchlistItems.mediaType,
+  title: watchlistItems.title,
+  name: watchlistItems.name,
+  posterPath: watchlistItems.posterPath,
+  backdropPath: watchlistItems.backdropPath,
+  voteAverage: watchlistItems.voteAverage,
+  releaseDate: watchlistItems.releaseDate,
+  firstAirDate: watchlistItems.firstAirDate,
+  addedAt: watchlistItems.addedAt,
+};
+
+async function loadItems(db: Pick<Db, 'select'>, userId: string): Promise<WatchlistItemDTO[]> {
+  const rows = await db
+    .select(itemColumns)
+    .from(watchlistItems)
+    .where(eq(watchlistItems.userId, userId))
+    .orderBy(desc(watchlistItems.addedAt), desc(watchlistItems.tmdbId))
+    .limit(WATCHLIST_MAX_ITEMS);
+  return rows.map(toWatchlistDTO);
 }
 
-async function loadItems(userId: string): Promise<IWatchlistItem[]> {
-  const doc = await Watchlist.findOne({ userId }).select('items').lean<{ items?: IWatchlistItem[] }>();
-  return doc?.items ?? [];
+/** Whitelisted, normalised row (unknown client fields were already dropped by zod). */
+function toRow(userId: string, input: WatchlistItemInput): typeof watchlistItems.$inferInsert {
+  return {
+    userId,
+    tmdbId: input.id,
+    mediaType: input.media_type,
+    title: input.title || null,
+    name: input.name || null,
+    posterPath: input.poster_path,
+    backdropPath: input.backdrop_path,
+    voteAverage: input.vote_average,
+    releaseDate: input.release_date ?? null,
+    firstAirDate: input.first_air_date ?? null,
+    addedAt: input.addedAt ? new Date(input.addedAt) : new Date(),
+  };
 }
 
 /** GET /api/watchlist → { items } (newest first) */
 export const GET = withHandler('watchlist.GET', async (req) => {
   const s = await requireSession(req);
-  await connectDB();
-  return json({ items: await loadItems(s.userId) });
+  return json({ items: await loadItems(getDb(), s.userId) });
 });
 
 /**
  * POST /api/watchlist  body: WatchlistItem  → { items }
  * Idempotent: an item already present (same id + media_type) is not duplicated (200).
  * 409 WATCHLIST_FULL when the list already holds 1000 items.
+ * The cap check + insert run in one transaction serialised per user (row lock on users).
  */
 export const POST = withHandler('watchlist.POST', async (req) => {
   const s = await requireSession(req);
-  const item = toItem(await readJson(req, watchlistItemSchema));
-  await connectDB();
+  const row = toRow(s.userId, await readJson(req, watchlistItemSchema));
 
-  await Watchlist.updateOne({ userId: s.userId }, { $setOnInsert: { items: [] } }, { upsert: true }).catch((err) => {
-    if ((err as { code?: number }).code !== 11000) throw err; // concurrent first insert — doc exists now
+  const result = await getDb().transaction(async (tx) => {
+    const [owner] = await tx.select({ id: users.id }).from(users).where(eq(users.id, s.userId)).for('update');
+    if (!owner) throw unauthorized();
+
+    const [present] = await tx
+      .select({ tmdbId: watchlistItems.tmdbId })
+      .from(watchlistItems)
+      .where(
+        and(
+          eq(watchlistItems.userId, s.userId),
+          eq(watchlistItems.mediaType, row.mediaType),
+          eq(watchlistItems.tmdbId, row.tmdbId),
+        ),
+      )
+      .limit(1);
+    if (present) return { status: 200, items: await loadItems(tx, s.userId) };
+
+    const [{ n }] = await tx.select({ n: count() }).from(watchlistItems).where(eq(watchlistItems.userId, s.userId));
+    if (n >= WATCHLIST_MAX_ITEMS) {
+      throw new HttpError(409, `Watchlist is full (max ${WATCHLIST_MAX_ITEMS} items).`, { code: 'WATCHLIST_FULL' });
+    }
+    // The composite PK makes this a no-op if a concurrent request (impossible under the lock) won.
+    await tx.insert(watchlistItems).values(row).onConflictDoNothing();
+    return { status: 201, items: await loadItems(tx, s.userId) };
   });
-  const updated = await Watchlist.findOneAndUpdate(
-    {
-      userId: s.userId,
-      [`items.${WATCHLIST_MAX_ITEMS - 1}`]: { $exists: false },
-      items: { $not: { $elemMatch: { id: item.id, media_type: item.media_type } } },
-    },
-    { $push: { items: { $each: [item], $position: 0 } } },
-    { returnDocument: 'after', projection: { items: 1 } },
-  ).lean<{ items: IWatchlistItem[] }>();
-
-  if (updated) return json({ items: updated.items }, { status: 201 });
-
-  const items = await loadItems(s.userId);
-  if (items.some((i) => i.id === item.id && i.media_type === item.media_type)) return json({ items });
-  throw new HttpError(409, `Watchlist is full (max ${WATCHLIST_MAX_ITEMS} items).`, { code: 'WATCHLIST_FULL' });
+  return json({ items: result.items }, { status: result.status });
 });
 
 function removeInput(req: NextRequest) {
@@ -81,11 +108,9 @@ export const DELETE = withHandler('watchlist.DELETE', async (req) => {
   const s = await requireSession(req);
   const fromQuery = removeInput(req);
   const { id, media_type } = fromQuery ? watchlistRemoveSchema.parse(fromQuery) : await readJson(req, watchlistRemoveSchema);
-  await connectDB();
-  const doc = await Watchlist.findOneAndUpdate(
-    { userId: s.userId },
-    { $pull: { items: { id, media_type } } },
-    { returnDocument: 'after', projection: { items: 1 } },
-  ).lean<{ items: IWatchlistItem[] }>();
-  return json({ items: doc?.items ?? [] });
+  const db = getDb();
+  await db
+    .delete(watchlistItems)
+    .where(and(eq(watchlistItems.userId, s.userId), eq(watchlistItems.mediaType, media_type), eq(watchlistItems.tmdbId, id)));
+  return json({ items: await loadItems(db, s.userId) });
 });
