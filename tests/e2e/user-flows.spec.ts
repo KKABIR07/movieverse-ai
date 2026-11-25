@@ -491,11 +491,12 @@ test.describe('AI assistant @full', () => {
       await s.context.close();
       test.skip(true, 'GROQ_API_KEY is not configured on the server — real AI reply not tested (the mocked UI test still ran).');
     }
-    if ([429, 502].includes(res.status())) {
+    if (res.status() === 429) {
       await s.context.close();
-      test.skip(true, `Groq upstream unavailable (${res.status()} ${body.code}) — real AI reply not tested.`);
+      test.skip(true, `Groq is rate limiting (${body.code}) — real AI reply not tested this run.`);
     }
-    expect(res.status()).toBe(200);
+    // 502 AI_UPSTREAM = Groq rejected the call (bad model id, revoked key, outage): the feature is broken → FAIL.
+    expect(res.status(), `AI reply (${body.code ?? 'ok'}) — check the server log for the Groq error`).toBe(200);
     expect(typeof body.reply).toBe('string');
     expect(body.reply!.length).toBeGreaterThan(0);
     await s.context.close();

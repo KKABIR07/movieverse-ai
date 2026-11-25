@@ -283,18 +283,24 @@ test.describe('rate limiting @full', () => {
     }
   });
 
-  test('normal browsing (12 full page loads/min) never gets /api/* throttled @full', async ({ browser }) => {
+  test('normal browsing (20 page loads in a minute) never gets /api/auth/me throttled @full', async ({ browser }) => {
+    // Every full page load calls GET /api/auth/me once. A visitor opening ~20 pages (or tabs) in a
+    // minute is normal; if /api/auth/me shares the 10/min login bucket, the 11th load gets a 429 and the
+    // client treats it as "signed out".
     const context = await browser.newContext();
     const ip = uniqueTestIp();
     await context.route('**/api/**', (route) => route.continue({ headers: { ...route.request().headers(), 'x-real-ip': ip } }));
     const page = await context.newPage();
-    const throttled: string[] = [];
-    page.on('response', (r) => {
-      if (r.status() === 429) throttled.push(r.url());
-    });
-    for (let i = 0; i < 12; i++) await page.goto(i % 2 ? '/search' : '/blog', { waitUntil: 'networkidle' }).catch(() => undefined);
+    const statuses: number[] = [];
+    for (let i = 0; i < 20; i++) {
+      const me = page.waitForResponse((r) => r.url().includes('/api/auth/me'), { timeout: 15_000 }).catch(() => null);
+      await page.goto(i % 2 ? '/search' : '/blog', { waitUntil: 'domcontentloaded' });
+      const r = await me;
+      if (r) statuses.push(r.status());
+    }
     await context.close();
-    expect(throttled, 'a signed-out visitor reloading pages should not be rate limited').toEqual([]);
+    expect(statuses.length, 'each page load calls /api/auth/me').toBeGreaterThanOrEqual(15);
+    expect(statuses.filter((s) => s === 429), `/api/auth/me statuses: ${statuses.join(',')}`).toEqual([]);
   });
 });
 

@@ -3,10 +3,13 @@
  *
  *  - `pageErrors`  : collects console errors, uncaught page errors and same-origin responses ≥ 500
  *                    for the current page; `expectClean()` asserts none happened (allowlist below).
- *  - `spreadIp`    : (opt-in, @full only) routes /api/** with a unique X-Real-IP per test so the
- *                    per-IP auth bucket (10 req/min) doesn't throttle a whole test run. Only effective
- *                    when the app trusts X-Real-IP from the client, i.e. NOT behind Caddy — exactly the
- *                    local/staging-without-proxy case @full is meant for.
+ *  - IP spreading  : the default `context` routes same-origin /api/** with a unique X-Real-IP per test so
+ *                    the per-IP rate-limit buckets (auth = 10/min, and /api/auth/me is in it) don't make
+ *                    one test throttle the next when ~100 page loads come from one machine. Only effective
+ *                    when the app trusts X-Real-IP from the client (local / staging without Caddy); behind
+ *                    Caddy the header is overwritten and production limits apply. Disable with
+ *                    E2E_NO_IP_SPREAD=1 (then the crawl measures what one real visitor would hit).
+ *                    Hand-made contexts use `spreadIpForContext()`.
  *
  * Selectors everywhere are role/name/URL based so the suite survives the visual redesign.
  */
@@ -89,9 +92,12 @@ export function uniqueTestIp(): string {
 
 /** Route same-origin /api/** through a fixed X-Real-IP (see header comment). */
 export async function spreadIpForContext(context: BrowserContext, ip = uniqueTestIp()): Promise<string> {
+  const target = new URL(process.env.E2E_BASE_URL ?? 'http://localhost:3000').origin;
   await context.route('**/api/**', (route) => {
     const req = route.request();
-    route.continue({ headers: { ...req.headers(), 'x-real-ip': ip } });
+    // Same-origin only: never add headers to third-party requests.
+    if (!req.url().startsWith(target)) return route.continue();
+    return route.continue({ headers: { ...req.headers(), 'x-real-ip': ip } });
   });
   return ip;
 }
@@ -127,6 +133,7 @@ type Fixtures = {
 export const test = base.extend<Fixtures>({
   context: async ({ context }, provide) => {
     await hideDevOverlay(context);
+    if (process.env.E2E_NO_IP_SPREAD !== '1') await spreadIpForContext(context);
     await provide(context);
   },
   // (`provide` rather than `use` so eslint's react-hooks rule doesn't mistake it for React.use)
